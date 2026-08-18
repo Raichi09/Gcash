@@ -1,11 +1,48 @@
 /* =========================================================
    GCASH PUHUNAN CALCULATOR
-   SIMPLE CURRENT-BALANCE SYSTEM
+   DIRECT EDIT BALANCE VERSION
+
+   RULES
+   ---------------------------------------------------------
+   GCash + Cash = Total Money
+
+   Coins are independent.
+
+   CASH IN:
+   - Paid:
+       GCash decreases
+       Cash increases
+   - Unpaid:
+       GCash decreases
+       Cash does not increase
+       Customer owes amount
+
+   CASH OUT:
+   - Paid:
+       Cash decreases
+       GCash increases
+   - Unpaid:
+       Cash decreases
+       GCash does not increase
+       Customer owes amount
+
+   FEES:
+   - Never affect GCash
+   - Never affect Cash
+   - Never affect Coins
+   - Paid fees = Profit
+
+   BALANCES:
+   - GCash is directly editable
+   - Cash is directly editable
+   - Coins are directly editable
+   - No Save Balances button needed
+   - Editing happens immediately
 ========================================================= */
 
 
 /* =========================================================
-   DEFAULT BALANCES
+   DEFAULT VALUES
 ========================================================= */
 
 const DEFAULT_DATA = {
@@ -22,11 +59,11 @@ const DEFAULT_DATA = {
 
 
 const STORAGE_KEY =
-    "gcashPuhunanCalculatorV7";
+    "gcashPuhunanCalculatorDirectV7";
 
 
 /* =========================================================
-   LOAD
+   LOAD DATA
 ========================================================= */
 
 let data;
@@ -56,6 +93,11 @@ try {
 
 } catch (error) {
 
+    console.error(
+        "Could not load saved data:",
+        error
+    );
+
     data =
         JSON.parse(
             JSON.stringify(
@@ -67,43 +109,51 @@ try {
 
 
 /* =========================================================
-   MAKE SURE DATA IS VALID
+   PREPARE DATA
 ========================================================= */
 
 function prepareData() {
 
     if (
-        typeof data.gcash !== "number" ||
-        !Number.isFinite(data.gcash)
+        typeof data.gcash !== "number"
     ) {
 
-        data.gcash = 12000;
+        data.gcash =
+            Number(
+                data.startingGcash
+            ) || 12000;
 
     }
 
 
     if (
-        typeof data.cash !== "number" ||
-        !Number.isFinite(data.cash)
+        typeof data.cash !== "number"
     ) {
 
-        data.cash = 12000;
+        data.cash =
+            Number(
+                data.startingCash
+            ) || 12000;
 
     }
 
 
     if (
-        typeof data.coins !== "number" ||
-        !Number.isFinite(data.coins)
+        typeof data.coins !== "number"
     ) {
 
-        data.coins = 500;
+        data.coins =
+            Number(
+                data.startingCoins
+            ) || 500;
 
     }
 
 
     if (
-        !Array.isArray(data.transactions)
+        !Array.isArray(
+            data.transactions
+        )
     ) {
 
         data.transactions = [];
@@ -111,54 +161,80 @@ function prepareData() {
     }
 
 
+    data.gcash =
+        roundMoney(
+            data.gcash
+        );
+
+
+    data.cash =
+        roundMoney(
+            data.cash
+        );
+
+
+    data.coins =
+        roundMoney(
+            data.coins
+        );
+
+
     data.transactions =
         data.transactions.map(
-            transaction => ({
+            transaction => {
 
-                id:
-                    transaction.id ||
-                    Date.now() +
-                    Math.random(),
+                return {
 
-                date:
-                    transaction.date ||
-                    new Date().toLocaleString(
-                        "en-PH"
-                    ),
+                    id:
+                        transaction.id ||
+                        Date.now() +
+                        Math.random(),
 
-                customer:
-                    transaction.customer ||
-                    "Unknown",
+                    date:
+                        transaction.date ||
+                        new Date().toLocaleString(
+                            "en-PH"
+                        ),
 
-                type:
-                    transaction.type ===
-                    "cashout"
-                        ? "cashout"
-                        : "cashin",
+                    customer:
+                        transaction.customer ||
+                        "Unknown",
 
-                amount:
-                    roundMoney(
-                        transaction.amount
-                    ),
+                    type:
+                        transaction.type ===
+                        "cashout"
+                            ? "cashout"
+                            : "cashin",
 
-                fee:
-                    roundMoney(
-                        transaction.fee
-                    ),
+                    amount:
+                        roundMoney(
+                            Number(
+                                transaction.amount
+                            ) || 0
+                        ),
 
-                amountStatus:
-                    transaction.amountStatus ===
-                    "unpaid"
-                        ? "unpaid"
-                        : "paid",
+                    fee:
+                        roundMoney(
+                            Number(
+                                transaction.fee
+                            ) || 0
+                        ),
 
-                feeStatus:
-                    transaction.feeStatus ===
-                    "unpaid"
-                        ? "unpaid"
-                        : "paid"
+                    amountStatus:
+                        transaction.amountStatus ===
+                        "unpaid"
+                            ? "unpaid"
+                            : "paid",
 
-            })
+                    feeStatus:
+                        transaction.feeStatus ===
+                        "unpaid"
+                            ? "unpaid"
+                            : "paid"
+
+                };
+
+            }
         );
 
 }
@@ -173,10 +249,21 @@ prepareData();
 
 function saveData() {
 
-    localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify(data)
-    );
+    try {
+
+        localStorage.setItem(
+            STORAGE_KEY,
+            JSON.stringify(data)
+        );
+
+    } catch (error) {
+
+        console.error(
+            "Could not save data:",
+            error
+        );
+
+    }
 
 }
 
@@ -225,11 +312,13 @@ function calculateFee(amount) {
 
     }
 
+
     if (amount <= 500) {
 
         return 5;
 
     }
+
 
     if (amount <= 1999) {
 
@@ -237,11 +326,13 @@ function calculateFee(amount) {
 
     }
 
+
     if (amount <= 5000) {
 
         return 15;
 
     }
+
 
     if (amount <= 9999) {
 
@@ -249,50 +340,208 @@ function calculateFee(amount) {
 
     }
 
+
     return 60;
 
 }
 
 
 /* =========================================================
-   BALANCES
+   CALCULATE TRANSACTION EFFECT
 ========================================================= */
 
-function getBalances() {
+/*
+    This function calculates what the transaction
+    history currently contributes to GCash and Cash.
 
-    const gcash =
-        roundMoney(data.gcash);
+    This is important when the user edits a balance.
 
-    const cash =
-        roundMoney(data.cash);
+    Example:
 
-    const coins =
-        roundMoney(data.coins);
+        Current GCash = 12,000
+        History effect = -500
+
+        User types GCash = 20,000
+
+        We change the base so that:
+
+        base + history effect = 20,000
+
+    Therefore the displayed/current balance stays
+    exactly what the user typed.
+*/
+
+function calculateHistoryEffect() {
+
+    let gcashEffect = 0;
+
+    let cashEffect = 0;
+
+    data.transactions
+        .slice()
+        .reverse()
+        .forEach(
+            transaction => {
+
+                const amount =
+                    roundMoney(
+                        transaction.amount
+                    );
 
 
-    /*
-     * IMPORTANT:
-     *
-     * Coins are NOT included.
-     */
+                if (
+                    transaction.type ===
+                    "cashin"
+                ) {
 
-    const totalMoney =
-        roundMoney(
-            gcash + cash
+                    /*
+                     * GCash always decreases
+                     */
+
+                    gcashEffect -= amount;
+
+
+                    /*
+                     * Cash only increases
+                     * when customer paid.
+                     */
+
+                    if (
+                        transaction.amountStatus ===
+                        "paid"
+                    ) {
+
+                        cashEffect += amount;
+
+                    }
+
+                }
+
+
+                else if (
+                    transaction.type ===
+                    "cashout"
+                ) {
+
+                    /*
+                     * Cash always decreases.
+                     */
+
+                    cashEffect -= amount;
+
+
+                    /*
+                     * GCash only increases
+                     * when customer paid.
+                     */
+
+                    if (
+                        transaction.amountStatus ===
+                        "paid"
+                    ) {
+
+                        gcashEffect += amount;
+
+                    }
+
+                }
+
+            }
         );
 
 
     return {
 
-        gcash,
+        gcashEffect:
+            roundMoney(
+                gcashEffect
+            ),
 
-        cash,
-
-        coins,
-
-        totalMoney
+        cashEffect:
+            roundMoney(
+                cashEffect
+            )
 
     };
+
+}
+
+
+/* =========================================================
+   CURRENT BALANCES
+========================================================= */
+
+function calculateBalances() {
+
+    /*
+     * data.gcash and data.cash represent the
+     * CURRENT editable balance.
+     *
+     * Transactions are already accounted for
+     * by adjusting the stored base when necessary.
+     *
+     * Therefore we simply return them.
+     */
+
+    return {
+
+        gcash:
+            roundMoney(
+                data.gcash
+            ),
+
+        cash:
+            roundMoney(
+                data.cash
+            ),
+
+        coins:
+            roundMoney(
+                data.coins
+            ),
+
+        totalMoney:
+            roundMoney(
+                data.gcash +
+                data.cash
+            )
+
+    };
+
+}
+
+
+/* =========================================================
+   FEE PROFIT
+========================================================= */
+
+function calculateFeeProfit() {
+
+    let profit = 0;
+
+
+    data.transactions.forEach(
+        transaction => {
+
+            if (
+                transaction.feeStatus ===
+                "paid"
+            ) {
+
+                profit +=
+                    Number(
+                        transaction.fee
+                    ) || 0;
+
+            }
+
+        }
+    );
+
+
+    return roundMoney(
+        profit
+    );
 
 }
 
@@ -301,7 +550,7 @@ function getBalances() {
    RECEIVABLE
 ========================================================= */
 
-function getReceivable() {
+function calculateReceivable() {
 
     let total = 0;
 
@@ -325,99 +574,44 @@ function getReceivable() {
     );
 
 
-    return roundMoney(total);
-
-}
-
-
-/* =========================================================
-   PROFIT
-========================================================= */
-
-function getProfit() {
-
-    let total = 0;
-
-
-    data.transactions.forEach(
-        transaction => {
-
-            if (
-                transaction.feeStatus ===
-                "paid"
-            ) {
-
-                total +=
-                    Number(
-                        transaction.fee
-                    ) || 0;
-
-            }
-
-        }
+    return roundMoney(
+        total
     );
 
-
-    return roundMoney(total);
-
 }
 
 
 /* =========================================================
-   DASHBOARD
+   UPDATE DASHBOARD
 ========================================================= */
 
-function updateDashboard() {
+function updateDashboard(
+    updateInputs = true
+) {
 
     const balances =
-        getBalances();
+        calculateBalances();
 
 
-    const totalMoney =
+    const profit =
+        calculateFeeProfit();
+
+
+    const receivable =
+        calculateReceivable();
+
+
+    /* TOTAL */
+
+    const totalElement =
         document.getElementById(
             "totalMoney"
         );
 
 
-    const gcashBalance =
-        document.getElementById(
-            "gcashBalance"
-        );
+    if (totalElement) {
 
-
-    const cashBalance =
-        document.getElementById(
-            "cashBalance"
-        );
-
-
-    const coinsBalance =
-        document.getElementById(
-            "coinsBalance"
-        );
-
-
-    const profit =
-        document.getElementById(
-            "profit"
-        );
-
-
-    const receivable =
-        document.getElementById(
-            "receivable"
-        );
-
-
-    const transactionCount =
-        document.getElementById(
-            "transactionCount"
-        );
-
-
-    if (totalMoney) {
-
-        totalMoney.textContent =
+        totalElement.textContent =
             peso(
                 balances.totalMoney
             );
@@ -425,9 +619,17 @@ function updateDashboard() {
     }
 
 
-    if (gcashBalance) {
+    /* GCASH */
 
-        gcashBalance.textContent =
+    const gcashElement =
+        document.getElementById(
+            "gcashBalance"
+        );
+
+
+    if (gcashElement) {
+
+        gcashElement.textContent =
             peso(
                 balances.gcash
             );
@@ -435,9 +637,17 @@ function updateDashboard() {
     }
 
 
-    if (cashBalance) {
+    /* CASH */
 
-        cashBalance.textContent =
+    const cashElement =
+        document.getElementById(
+            "cashBalance"
+        );
+
+
+    if (cashElement) {
+
+        cashElement.textContent =
             peso(
                 balances.cash
             );
@@ -445,9 +655,17 @@ function updateDashboard() {
     }
 
 
-    if (coinsBalance) {
+    /* COINS */
 
-        coinsBalance.textContent =
+    const coinsElement =
+        document.getElementById(
+            "coinsBalance"
+        );
+
+
+    if (coinsElement) {
+
+        coinsElement.textContent =
             peso(
                 balances.coins
             );
@@ -455,35 +673,72 @@ function updateDashboard() {
     }
 
 
-    if (profit) {
+    /* PROFIT */
 
-        profit.textContent =
+    const profitElement =
+        document.getElementById(
+            "profit"
+        );
+
+
+    if (profitElement) {
+
+        profitElement.textContent =
             peso(
-                getProfit()
+                profit
             );
 
     }
 
 
-    if (receivable) {
+    /* CUSTOMER OWES */
 
-        receivable.textContent =
+    const receivableElement =
+        document.getElementById(
+            "receivable"
+        );
+
+
+    if (receivableElement) {
+
+        receivableElement.textContent =
             peso(
-                getReceivable()
+                receivable
             );
 
     }
 
 
-    if (transactionCount) {
+    /* TRANSACTION COUNT */
 
-        transactionCount.textContent =
+    const countElement =
+        document.getElementById(
+            "transactionCount"
+        );
+
+
+    if (countElement) {
+
+        countElement.textContent =
             data.transactions.length;
 
     }
 
 
-    updateHistorySummary();
+    /*
+     * IMPORTANT:
+     *
+     * When the user is currently typing into
+     * an editable balance field, we DON'T overwrite
+     * the input.
+     */
+
+    if (updateInputs) {
+
+        syncBalanceInputs();
+
+    }
+
 
     renderHistory();
 
@@ -491,8 +746,85 @@ function updateDashboard() {
 
 
 /* =========================================================
-   LIVE EDIT GCASH
+   SYNC INPUTS
 ========================================================= */
+
+function syncBalanceInputs() {
+
+    const gcashInput =
+        document.getElementById(
+            "gcashInput"
+        );
+
+
+    const cashInput =
+        document.getElementById(
+            "cashInput"
+        );
+
+
+    const coinsInput =
+        document.getElementById(
+            "coinsInput"
+        );
+
+
+    if (
+        gcashInput &&
+        document.activeElement !==
+        gcashInput
+    ) {
+
+        gcashInput.value =
+            data.gcash;
+
+    }
+
+
+    if (
+        cashInput &&
+        document.activeElement !==
+        cashInput
+    ) {
+
+        cashInput.value =
+            data.cash;
+
+    }
+
+
+    if (
+        coinsInput &&
+        document.activeElement !==
+        coinsInput
+    ) {
+
+        coinsInput.value =
+            data.coins;
+
+    }
+
+}
+
+
+/* =========================================================
+   DIRECT BALANCE EDIT
+========================================================= */
+
+/*
+    THIS is the part that fixes your problem.
+
+    When you type:
+
+        GCash 15000
+
+    the dashboard immediately becomes:
+
+        GCash ₱15,000
+        Total Money updates too.
+
+    There is NO SAVE button.
+*/
 
 function editGcash() {
 
@@ -503,20 +835,6 @@ function editGcash() {
 
 
     if (!input) {
-
-        return;
-
-    }
-
-
-    /*
-     * Empty input is allowed temporarily
-     * while typing.
-     */
-
-    if (
-        input.value === ""
-    ) {
 
         return;
 
@@ -540,26 +858,25 @@ function editGcash() {
 
 
     data.gcash =
-        roundMoney(value);
+        roundMoney(
+            value
+        );
 
 
     saveData();
 
 
     /*
-     * Update only dashboard.
+     * false means:
      *
-     * DO NOT reset the input.
+     * DO NOT overwrite the input while
+     * the user is typing.
      */
 
-    updateDashboardOnly();
+    updateDashboard(false);
 
 }
 
-
-/* =========================================================
-   LIVE EDIT CASH
-========================================================= */
 
 function editCash() {
 
@@ -570,15 +887,6 @@ function editCash() {
 
 
     if (!input) {
-
-        return;
-
-    }
-
-
-    if (
-        input.value === ""
-    ) {
 
         return;
 
@@ -602,20 +910,18 @@ function editCash() {
 
 
     data.cash =
-        roundMoney(value);
+        roundMoney(
+            value
+        );
 
 
     saveData();
 
 
-    updateDashboardOnly();
+    updateDashboard(false);
 
 }
 
-
-/* =========================================================
-   LIVE EDIT COINS
-========================================================= */
 
 function editCoins() {
 
@@ -626,15 +932,6 @@ function editCoins() {
 
 
     if (!input) {
-
-        return;
-
-    }
-
-
-    if (
-        input.value === ""
-    ) {
 
         return;
 
@@ -658,89 +955,15 @@ function editCoins() {
 
 
     data.coins =
-        roundMoney(value);
+        roundMoney(
+            value
+        );
 
 
     saveData();
 
 
-    updateDashboardOnly();
-
-}
-
-
-/* =========================================================
-   DASHBOARD ONLY
-========================================================= */
-
-function updateDashboardOnly() {
-
-    const balances =
-        getBalances();
-
-
-    const totalMoney =
-        document.getElementById(
-            "totalMoney"
-        );
-
-
-    const gcashBalance =
-        document.getElementById(
-            "gcashBalance"
-        );
-
-
-    const cashBalance =
-        document.getElementById(
-            "cashBalance"
-        );
-
-
-    const coinsBalance =
-        document.getElementById(
-            "coinsBalance"
-        );
-
-
-    if (totalMoney) {
-
-        totalMoney.textContent =
-            peso(
-                balances.totalMoney
-            );
-
-    }
-
-
-    if (gcashBalance) {
-
-        gcashBalance.textContent =
-            peso(
-                balances.gcash
-            );
-
-    }
-
-
-    if (cashBalance) {
-
-        cashBalance.textContent =
-            peso(
-                balances.cash
-            );
-
-    }
-
-
-    if (coinsBalance) {
-
-        coinsBalance.textContent =
-            peso(
-                balances.coins
-            );
-
-    }
+    updateDashboard(false);
 
 }
 
@@ -763,7 +986,10 @@ function updatePreview() {
         );
 
 
-    if (!amountInput || !feeInput) {
+    if (
+        !amountInput ||
+        !feeInput
+    ) {
 
         return;
 
@@ -829,7 +1055,7 @@ function updatePreview() {
 
 
 /* =========================================================
-   AUTO FEE
+   AUTOMATIC FEE
 ========================================================= */
 
 function updateAutomaticFee() {
@@ -846,7 +1072,10 @@ function updateAutomaticFee() {
         );
 
 
-    if (!amountInput || !feeInput) {
+    if (
+        !amountInput ||
+        !feeInput
+    ) {
 
         return;
 
@@ -876,14 +1105,14 @@ function updateAutomaticFee() {
 
 function getRadioValue(name) {
 
-    const radio =
+    const selected =
         document.querySelector(
             `input[name="${name}"]:checked`
         );
 
 
-    return radio
-        ? radio.value
+    return selected
+        ? selected.value
         : "paid";
 
 }
@@ -895,215 +1124,43 @@ function getRadioValue(name) {
 
 function showMessage(
     text,
-    type
+    type = "success"
 ) {
 
-    const element =
+    const message =
         document.getElementById(
             "formMessage"
         );
 
 
-    if (!element) {
+    if (!message) {
 
         return;
 
     }
 
 
-    element.textContent =
+    message.textContent =
         text;
 
 
-    element.className =
+    message.className =
         "message " +
-        (type || "success");
+        type;
 
 
     setTimeout(
         () => {
 
-            element.textContent =
+            message.textContent =
                 "";
 
-            element.className =
+            message.className =
                 "message";
 
         },
-        3500
+        4000
     );
-
-}
-
-
-/* =========================================================
-   APPLY TRANSACTION
-========================================================= */
-
-function applyTransaction(
-    transaction
-) {
-
-    const amount =
-        roundMoney(
-            transaction.amount
-        );
-
-
-    /* =====================================================
-       CASH IN
-
-       GCash decreases.
-
-       Paid:
-           Cash increases.
-
-       Unpaid:
-           Cash stays the same.
-    ====================================================== */
-
-    if (
-        transaction.type ===
-        "cashin"
-    ) {
-
-        data.gcash =
-            roundMoney(
-                data.gcash -
-                amount
-            );
-
-
-        if (
-            transaction.amountStatus ===
-            "paid"
-        ) {
-
-            data.cash =
-                roundMoney(
-                    data.cash +
-                    amount
-                );
-
-        }
-
-    }
-
-
-    /* =====================================================
-       CASH OUT
-
-       Cash decreases.
-
-       Paid:
-           GCash increases.
-
-       Unpaid:
-           GCash stays the same.
-    ====================================================== */
-
-    if (
-        transaction.type ===
-        "cashout"
-    ) {
-
-        data.cash =
-            roundMoney(
-                data.cash -
-                amount
-            );
-
-
-        if (
-            transaction.amountStatus ===
-            "paid"
-        ) {
-
-            data.gcash =
-                roundMoney(
-                    data.gcash +
-                    amount
-                );
-
-        }
-
-    }
-
-}
-
-
-/* =========================================================
-   REVERSE TRANSACTION
-========================================================= */
-
-function reverseTransaction(
-    transaction
-) {
-
-    const amount =
-        roundMoney(
-            transaction.amount
-        );
-
-
-    /* Reverse Cash In */
-
-    if (
-        transaction.type ===
-        "cashin"
-    ) {
-
-        data.gcash =
-            roundMoney(
-                data.gcash +
-                amount
-            );
-
-
-        if (
-            transaction.amountStatus ===
-            "paid"
-        ) {
-
-            data.cash =
-                roundMoney(
-                    data.cash -
-                    amount
-                );
-
-        }
-
-    }
-
-
-    /* Reverse Cash Out */
-
-    if (
-        transaction.type ===
-        "cashout"
-    ) {
-
-        data.cash =
-            roundMoney(
-                data.cash +
-                amount
-            );
-
-
-        if (
-            transaction.amountStatus ===
-            "paid"
-        ) {
-
-            data.gcash =
-                roundMoney(
-                    data.gcash -
-                    amount
-                );
-
-        }
-
-    }
 
 }
 
@@ -1170,9 +1227,7 @@ function addTransaction() {
         );
 
 
-    /* =====================================================
-       VALIDATION
-    ====================================================== */
+    /* VALIDATE CUSTOMER */
 
     if (!customer) {
 
@@ -1185,6 +1240,8 @@ function addTransaction() {
 
     }
 
+
+    /* VALIDATE AMOUNT */
 
     if (
         !Number.isFinite(amount) ||
@@ -1201,6 +1258,8 @@ function addTransaction() {
     }
 
 
+    /* VALIDATE FEE */
+
     if (
         !Number.isFinite(fee) ||
         fee < 0
@@ -1216,44 +1275,78 @@ function addTransaction() {
     }
 
 
+    const balances =
+        calculateBalances();
+
+
     /* =====================================================
-       CHECK AVAILABLE BALANCE
+       CASH IN
     ====================================================== */
 
     if (
-        type === "cashin" &&
-        data.gcash < amount
+        type === "cashin"
     ) {
 
-        showMessage(
-            "Not enough GCash. Available: " +
-            peso(data.gcash),
-            "error"
-        );
+        /*
+         * GCash must always be sent,
+         * even when the customer hasn't paid.
+         */
 
-        return;
+        if (
+            balances.gcash <
+            amount
+        ) {
 
-    }
+            showMessage(
+                "Not enough GCash. Available: " +
+                peso(
+                    balances.gcash
+                ),
+                "error"
+            );
 
+            return;
 
-    if (
-        type === "cashout" &&
-        data.cash < amount
-    ) {
-
-        showMessage(
-            "Not enough Cash. Available: " +
-            peso(data.cash),
-            "error"
-        );
-
-        return;
+        }
 
     }
 
 
     /* =====================================================
-       CREATE
+       CASH OUT
+    ====================================================== */
+
+    if (
+        type === "cashout"
+    ) {
+
+        /*
+         * Cash must always be given,
+         * even when the customer hasn't paid.
+         */
+
+        if (
+            balances.cash <
+            amount
+        ) {
+
+            showMessage(
+                "Not enough Cash. Available: " +
+                peso(
+                    balances.cash
+                ),
+                "error"
+            );
+
+            return;
+
+        }
+
+    }
+
+
+    /* =====================================================
+       CREATE TRANSACTION
     ====================================================== */
 
     const transaction = {
@@ -1288,18 +1381,77 @@ function addTransaction() {
     };
 
 
-    /* =====================================================
-       MODIFY CURRENT BALANCES
-    ====================================================== */
+    /*
+     * UPDATE CURRENT BALANCE
+     *
+     * CASH IN:
+     * GCash always decreases.
+     * Cash increases only if paid.
+     */
 
-    applyTransaction(
-        transaction
-    );
+    if (
+        type === "cashin"
+    ) {
+
+        data.gcash =
+            roundMoney(
+                data.gcash -
+                amount
+            );
 
 
-    /* =====================================================
-       SAVE TRANSACTION
-    ====================================================== */
+        if (
+            amountStatus ===
+            "paid"
+        ) {
+
+            data.cash =
+                roundMoney(
+                    data.cash +
+                    amount
+                );
+
+        }
+
+    }
+
+
+    /*
+     * CASH OUT:
+     * Cash always decreases.
+     * GCash increases only if paid.
+     */
+
+    else if (
+        type === "cashout"
+    ) {
+
+        data.cash =
+            roundMoney(
+                data.cash -
+                amount
+            );
+
+
+        if (
+            amountStatus ===
+            "paid"
+        ) {
+
+            data.gcash =
+                roundMoney(
+                    data.gcash +
+                    amount
+                );
+
+        }
+
+    }
+
+
+    /*
+     * Add history.
+     */
 
     data.transactions.unshift(
         transaction
@@ -1328,21 +1480,39 @@ function addTransaction() {
         "";
 
 
-    document.querySelector(
-        'input[name="amountStatus"][value="paid"]'
-    ).checked = true;
+    const paidAmountRadio =
+        document.querySelector(
+            'input[name="amountStatus"][value="paid"]'
+        );
 
 
-    document.querySelector(
-        'input[name="feeStatus"][value="paid"]'
-    ).checked = true;
+    const paidFeeRadio =
+        document.querySelector(
+            'input[name="feeStatus"][value="paid"]'
+        );
+
+
+    if (paidAmountRadio) {
+
+        paidAmountRadio.checked =
+            true;
+
+    }
+
+
+    if (paidFeeRadio) {
+
+        paidFeeRadio.checked =
+            true;
+
+    }
 
 
     updatePreview();
 
 
     showMessage(
-        "✓ Transaction added and balance updated.",
+        "✓ Transaction added successfully.",
         "success"
     );
 
@@ -1350,7 +1520,7 @@ function addTransaction() {
 
 
 /* =========================================================
-   CHANGE PAYMENT STATUS
+   CHANGE STATUS
 ========================================================= */
 
 function changeStatus(
@@ -1374,23 +1544,14 @@ function changeStatus(
     }
 
 
-    /* =====================================================
-       FEE STATUS
-       Does NOT affect balance.
-    ====================================================== */
+    const oldStatus =
+        transaction[field];
+
 
     if (
-        field ===
-        "feeStatus"
+        oldStatus ===
+        newStatus
     ) {
-
-        transaction.feeStatus =
-            newStatus;
-
-
-        saveData();
-
-        updateDashboard();
 
         return;
 
@@ -1398,8 +1559,7 @@ function changeStatus(
 
 
     /* =====================================================
-       AMOUNT STATUS
-       DOES affect balance.
+       AMOUNT STATUS CHANGED
     ====================================================== */
 
     if (
@@ -1407,37 +1567,140 @@ function changeStatus(
         "amountStatus"
     ) {
 
-        /*
-         * Remove old effect.
-         */
-
-        reverseTransaction(
-            transaction
-        );
+        const amount =
+            roundMoney(
+                transaction.amount
+            );
 
 
         /*
-         * Change status.
+         * CASH IN
          */
 
-        transaction.amountStatus =
-            newStatus;
+        if (
+            transaction.type ===
+            "cashin"
+        ) {
+
+            /*
+             * NOT PAID -> PAID
+             *
+             * Customer gives cash now.
+             */
+
+            if (
+                oldStatus ===
+                "unpaid" &&
+                newStatus ===
+                "paid"
+            ) {
+
+                data.cash =
+                    roundMoney(
+                        data.cash +
+                        amount
+                    );
+
+            }
+
+
+            /*
+             * PAID -> NOT PAID
+             *
+             * Remove the cash that
+             * was previously received.
+             */
+
+            else if (
+                oldStatus ===
+                "paid" &&
+                newStatus ===
+                "unpaid"
+            ) {
+
+                data.cash =
+                    roundMoney(
+                        data.cash -
+                        amount
+                    );
+
+            }
+
+        }
 
 
         /*
-         * Apply new effect.
+         * CASH OUT
          */
 
-        applyTransaction(
-            transaction
-        );
+        else if (
+            transaction.type ===
+            "cashout"
+        ) {
+
+            /*
+             * NOT PAID -> PAID
+             *
+             * Customer gives GCash now.
+             */
+
+            if (
+                oldStatus ===
+                "unpaid" &&
+                newStatus ===
+                "paid"
+            ) {
+
+                data.gcash =
+                    roundMoney(
+                        data.gcash +
+                        amount
+                    );
+
+            }
 
 
-        saveData();
+            /*
+             * PAID -> NOT PAID
+             *
+             * Remove the GCash that
+             * was previously received.
+             */
 
-        updateDashboard();
+            else if (
+                oldStatus ===
+                "paid" &&
+                newStatus ===
+                "unpaid"
+            ) {
+
+                data.gcash =
+                    roundMoney(
+                        data.gcash -
+                        amount
+                    );
+
+            }
+
+        }
 
     }
+
+
+    /*
+     * Fee status doesn't affect balances.
+     *
+     * It only affects profit.
+     */
+
+    transaction[field] =
+        newStatus;
+
+
+    saveData();
+
+
+    updateDashboard();
 
 }
 
@@ -1466,17 +1729,17 @@ function editFee(
     }
 
 
-    const fee =
+    const newFee =
         Number(value);
 
 
     if (
-        !Number.isFinite(fee) ||
-        fee < 0
+        !Number.isFinite(newFee) ||
+        newFee < 0
     ) {
 
         alert(
-            "Invalid fee."
+            "Please enter a valid fee."
         );
 
         renderHistory();
@@ -1487,10 +1750,13 @@ function editFee(
 
 
     transaction.fee =
-        roundMoney(fee);
+        roundMoney(
+            newFee
+        );
 
 
     saveData();
+
 
     updateDashboard();
 
@@ -1498,15 +1764,17 @@ function editFee(
 
 
 /* =========================================================
-   DELETE
+   DELETE TRANSACTION
 ========================================================= */
 
 function deleteTransaction(id) {
 
     const index =
         data.transactions.findIndex(
-            item =>
-                String(item.id) ===
+            transaction =>
+                String(
+                    transaction.id
+                ) ===
                 String(id)
         );
 
@@ -1528,14 +1796,16 @@ function deleteTransaction(id) {
             transaction.customer +
             "\n" +
             (
-                transaction.type === "cashin"
+                transaction.type ===
+                "cashin"
                     ? "Cash In"
                     : "Cash Out"
             ) +
-            "\n" +
+            "\nAmount: " +
             peso(
                 transaction.amount
-            )
+            ) +
+            "\n\nThe balance effect will be reversed."
         );
 
 
@@ -1546,18 +1816,85 @@ function deleteTransaction(id) {
     }
 
 
-    /*
-     * Remove its effect from balances.
-     */
-
-    reverseTransaction(
-        transaction
-    );
+    const amount =
+        roundMoney(
+            transaction.amount
+        );
 
 
     /*
-     * Remove history.
+     * REVERSE BALANCE EFFECT
      */
+
+    if (
+        transaction.type ===
+        "cashin"
+    ) {
+
+        /*
+         * Cash In originally:
+         *
+         * GCash - amount
+         * Cash + amount if paid
+         */
+
+        data.gcash =
+            roundMoney(
+                data.gcash +
+                amount
+            );
+
+
+        if (
+            transaction.amountStatus ===
+            "paid"
+        ) {
+
+            data.cash =
+                roundMoney(
+                    data.cash -
+                    amount
+                );
+
+        }
+
+    }
+
+
+    else if (
+        transaction.type ===
+        "cashout"
+    ) {
+
+        /*
+         * Cash Out originally:
+         *
+         * Cash - amount
+         * GCash + amount if paid
+         */
+
+        data.cash =
+            roundMoney(
+                data.cash +
+                amount
+            );
+
+
+        if (
+            transaction.amountStatus ===
+            "paid"
+        ) {
+
+            data.gcash =
+                roundMoney(
+                    data.gcash -
+                    amount
+                );
+
+        }
+
+    }
+
 
     data.transactions.splice(
         index,
@@ -1566,6 +1903,7 @@ function deleteTransaction(id) {
 
 
     saveData();
+
 
     updateDashboard();
 
@@ -1640,7 +1978,7 @@ function createStatusSelect(
 
 
 /* =========================================================
-   HISTORY
+   RENDER HISTORY
 ========================================================= */
 
 function renderHistory() {
@@ -1669,7 +2007,8 @@ function renderHistory() {
 
 
     if (
-        data.transactions.length === 0
+        data.transactions.length ===
+        0
     ) {
 
         if (empty) {
@@ -1678,6 +2017,9 @@ function renderHistory() {
                 "block";
 
         }
+
+
+        updateHistorySummary();
 
         return;
 
@@ -1703,41 +2045,41 @@ function renderHistory() {
 
             /* DATE */
 
-            const date =
+            const dateCell =
                 document.createElement(
                     "td"
                 );
 
-            date.textContent =
+            dateCell.textContent =
                 transaction.date;
 
 
             /* CUSTOMER */
 
-            const customer =
+            const customerCell =
                 document.createElement(
                     "td"
                 );
 
-            customer.textContent =
+            customerCell.textContent =
                 transaction.customer;
 
 
             /* TYPE */
 
-            const type =
+            const typeCell =
                 document.createElement(
                     "td"
                 );
 
-            type.textContent =
+            typeCell.textContent =
                 transaction.type ===
                 "cashin"
                     ? "Cash In"
                     : "Cash Out";
 
 
-            type.className =
+            typeCell.className =
                 transaction.type ===
                 "cashin"
                     ? "type-cashin"
@@ -1746,12 +2088,12 @@ function renderHistory() {
 
             /* AMOUNT */
 
-            const amount =
+            const amountCell =
                 document.createElement(
                     "td"
                 );
 
-            amount.textContent =
+            amountCell.textContent =
                 peso(
                     transaction.amount
                 );
@@ -1759,19 +2101,19 @@ function renderHistory() {
 
             /* AMOUNT STATUS */
 
-            const amountStatus =
+            const amountStatusCell =
                 document.createElement(
                     "td"
                 );
 
 
-            amountStatus.appendChild(
+            amountStatusCell.appendChild(
 
                 createStatusSelect(
 
                     transaction.amountStatus,
 
-                    status => {
+                    newStatus => {
 
                         changeStatus(
 
@@ -1779,7 +2121,7 @@ function renderHistory() {
 
                             "amountStatus",
 
-                            status
+                            newStatus
 
                         );
 
@@ -1792,7 +2134,7 @@ function renderHistory() {
 
             /* FEE */
 
-            const fee =
+            const feeCell =
                 document.createElement(
                     "td"
                 );
@@ -1807,18 +2149,14 @@ function renderHistory() {
             feeInput.type =
                 "number";
 
-
             feeInput.min =
                 "0";
-
 
             feeInput.step =
                 "0.01";
 
-
             feeInput.value =
                 transaction.fee;
-
 
             feeInput.className =
                 "history-fee-input";
@@ -1840,26 +2178,26 @@ function renderHistory() {
             );
 
 
-            fee.appendChild(
+            feeCell.appendChild(
                 feeInput
             );
 
 
             /* FEE STATUS */
 
-            const feeStatus =
+            const feeStatusCell =
                 document.createElement(
                     "td"
                 );
 
 
-            feeStatus.appendChild(
+            feeStatusCell.appendChild(
 
                 createStatusSelect(
 
                     transaction.feeStatus,
 
-                    status => {
+                    newStatus => {
 
                         changeStatus(
 
@@ -1867,7 +2205,7 @@ function renderHistory() {
 
                             "feeStatus",
 
-                            status
+                            newStatus
 
                         );
 
@@ -1880,7 +2218,7 @@ function renderHistory() {
 
             /* ACTION */
 
-            const action =
+            const actionCell =
                 document.createElement(
                     "td"
                 );
@@ -1890,10 +2228,6 @@ function renderHistory() {
                 document.createElement(
                     "button"
                 );
-
-
-            deleteButton.type =
-                "button";
 
 
             deleteButton.className =
@@ -1916,34 +2250,55 @@ function renderHistory() {
             );
 
 
-            action.appendChild(
+            actionCell.appendChild(
                 deleteButton
             );
 
 
             /* ADD */
 
-            row.appendChild(date);
+            row.appendChild(
+                dateCell
+            );
 
-            row.appendChild(customer);
+            row.appendChild(
+                customerCell
+            );
 
-            row.appendChild(type);
+            row.appendChild(
+                typeCell
+            );
 
-            row.appendChild(amount);
+            row.appendChild(
+                amountCell
+            );
 
-            row.appendChild(amountStatus);
+            row.appendChild(
+                amountStatusCell
+            );
 
-            row.appendChild(fee);
+            row.appendChild(
+                feeCell
+            );
 
-            row.appendChild(feeStatus);
+            row.appendChild(
+                feeStatusCell
+            );
 
-            row.appendChild(action);
+            row.appendChild(
+                actionCell
+            );
 
 
-            body.appendChild(row);
+            body.appendChild(
+                row
+            );
 
         }
     );
+
+
+    updateHistorySummary();
 
 }
 
@@ -2013,28 +2368,68 @@ function updateHistorySummary() {
     );
 
 
-    document.getElementById(
-        "paidAmountTotal"
-    ).textContent =
-        peso(paidAmount);
+    const paidAmountElement =
+        document.getElementById(
+            "paidAmountTotal"
+        );
 
 
-    document.getElementById(
-        "unpaidAmountTotal"
-    ).textContent =
-        peso(unpaidAmount);
+    const unpaidAmountElement =
+        document.getElementById(
+            "unpaidAmountTotal"
+        );
 
 
-    document.getElementById(
-        "paidFeeTotal"
-    ).textContent =
-        peso(paidFee);
+    const paidFeeElement =
+        document.getElementById(
+            "paidFeeTotal"
+        );
 
 
-    document.getElementById(
-        "unpaidFeeTotal"
-    ).textContent =
-        peso(unpaidFee);
+    const unpaidFeeElement =
+        document.getElementById(
+            "unpaidFeeTotal"
+        );
+
+
+    if (paidAmountElement) {
+
+        paidAmountElement.textContent =
+            peso(
+                paidAmount
+            );
+
+    }
+
+
+    if (unpaidAmountElement) {
+
+        unpaidAmountElement.textContent =
+            peso(
+                unpaidAmount
+            );
+
+    }
+
+
+    if (paidFeeElement) {
+
+        paidFeeElement.textContent =
+            peso(
+                paidFee
+            );
+
+    }
+
+
+    if (unpaidFeeElement) {
+
+        unpaidFeeElement.textContent =
+            peso(
+                unpaidFee
+            );
+
+    }
 
 }
 
@@ -2046,11 +2441,12 @@ function updateHistorySummary() {
 function clearHistory() {
 
     if (
-        data.transactions.length === 0
+        data.transactions.length ===
+        0
     ) {
 
         alert(
-            "No transactions to clear."
+            "There are no transactions."
         );
 
         return;
@@ -2061,7 +2457,7 @@ function clearHistory() {
     const confirmed =
         confirm(
             "Clear all transaction history?\n\n" +
-            "Your current balances will stay exactly as they are."
+            "The balance effects of these transactions will also be reversed."
         );
 
 
@@ -2073,11 +2469,80 @@ function clearHistory() {
 
 
     /*
-     * IMPORTANT:
-     *
-     * Clearing history does NOT change
-     * the current GCash/Cash/Coins.
+     * Reverse every transaction.
      */
+
+    const transactions =
+        data.transactions.slice();
+
+
+    transactions.forEach(
+        transaction => {
+
+            const amount =
+                roundMoney(
+                    transaction.amount
+                );
+
+
+            if (
+                transaction.type ===
+                "cashin"
+            ) {
+
+                data.gcash =
+                    roundMoney(
+                        data.gcash +
+                        amount
+                    );
+
+
+                if (
+                    transaction.amountStatus ===
+                    "paid"
+                ) {
+
+                    data.cash =
+                        roundMoney(
+                            data.cash -
+                            amount
+                        );
+
+                }
+
+            }
+
+
+            else if (
+                transaction.type ===
+                "cashout"
+            ) {
+
+                data.cash =
+                    roundMoney(
+                        data.cash +
+                        amount
+                    );
+
+
+                if (
+                    transaction.amountStatus ===
+                    "paid"
+                ) {
+
+                    data.gcash =
+                        roundMoney(
+                            data.gcash -
+                            amount
+                        );
+
+                }
+
+            }
+
+        }
+    );
+
 
     data.transactions =
         [];
@@ -2085,7 +2550,13 @@ function clearHistory() {
 
     saveData();
 
+
     updateDashboard();
+
+
+    alert(
+        "Transaction history cleared."
+    );
 
 }
 
@@ -2098,11 +2569,11 @@ function resetEverything() {
 
     const confirmed =
         confirm(
-            "Reset everything?\n\n" +
-            "GCash will become ₱12,000\n" +
-            "Cash will become ₱12,000\n" +
-            "Coins will become ₱500\n" +
-            "All transactions will be deleted."
+            "Reset EVERYTHING?\n\n" +
+            "This will delete all transactions and restore:\n\n" +
+            "GCash: ₱12,000\n" +
+            "Cash: ₱12,000\n" +
+            "Coins: ₱500"
         );
 
 
@@ -2124,29 +2595,8 @@ function resetEverything() {
     saveData();
 
 
-    /*
-     * Put reset values into inputs.
-     */
-
-    document.getElementById(
-        "gcashInput"
-    ).value =
-        data.gcash;
-
-
-    document.getElementById(
-        "cashInput"
-    ).value =
-        data.cash;
-
-
-    document.getElementById(
-        "coinsInput"
-    ).value =
-        data.coins;
-
-
     updateDashboard();
+
 
     updatePreview();
 
@@ -2154,7 +2604,7 @@ function resetEverything() {
 
 
 /* =========================================================
-   START APP
+   EVENTS
 ========================================================= */
 
 document.addEventListener(
@@ -2163,7 +2613,7 @@ document.addEventListener(
 
         /* =================================================
            BALANCE INPUTS
-        ================================================== */
+        ================================================= */
 
         const gcashInput =
             document.getElementById(
@@ -2184,46 +2634,44 @@ document.addEventListener(
 
 
         /*
-         * Set actual saved values.
+         * INPUT = immediate change.
+         *
+         * No Save button.
          */
 
-        gcashInput.value =
-            data.gcash;
+        if (gcashInput) {
+
+            gcashInput.addEventListener(
+                "input",
+                editGcash
+            );
+
+        }
 
 
-        cashInput.value =
-            data.cash;
+        if (cashInput) {
+
+            cashInput.addEventListener(
+                "input",
+                editCash
+            );
+
+        }
 
 
-        coinsInput.value =
-            data.coins;
+        if (coinsInput) {
 
+            coinsInput.addEventListener(
+                "input",
+                editCoins
+            );
 
-        /*
-         * LIVE EDIT
-         */
-
-        gcashInput.addEventListener(
-            "input",
-            editGcash
-        );
-
-
-        cashInput.addEventListener(
-            "input",
-            editCash
-        );
-
-
-        coinsInput.addEventListener(
-            "input",
-            editCoins
-        );
+        }
 
 
         /* =================================================
-           TRANSACTION AMOUNT
-        ================================================== */
+           AMOUNT
+        ================================================= */
 
         const amountInput =
             document.getElementById(
@@ -2231,15 +2679,19 @@ document.addEventListener(
             );
 
 
-        amountInput.addEventListener(
-            "input",
-            updateAutomaticFee
-        );
+        if (amountInput) {
+
+            amountInput.addEventListener(
+                "input",
+                updateAutomaticFee
+            );
+
+        }
 
 
         /* =================================================
            FEE
-        ================================================== */
+        ================================================= */
 
         const feeInput =
             document.getElementById(
@@ -2247,51 +2699,81 @@ document.addEventListener(
             );
 
 
-        feeInput.addEventListener(
-            "input",
-            updatePreview
-        );
+        if (feeInput) {
+
+            feeInput.addEventListener(
+                "input",
+                updatePreview
+            );
+
+        }
 
 
         /* =================================================
-           ADD TRANSACTION
-        ================================================== */
+           ADD
+        ================================================= */
 
-        document.getElementById(
-            "addTransactionBtn"
-        ).addEventListener(
-            "click",
-            addTransaction
-        );
+        const addButton =
+            document.getElementById(
+                "addTransactionBtn"
+            );
+
+
+        if (addButton) {
+
+            addButton.addEventListener(
+                "click",
+                addTransaction
+            );
+
+        }
 
 
         /* =================================================
            CLEAR HISTORY
-        ================================================== */
+        ================================================= */
 
-        document.getElementById(
-            "clearHistoryBtn"
-        ).addEventListener(
-            "click",
-            clearHistory
-        );
+        const clearButton =
+            document.getElementById(
+                "clearHistoryBtn"
+            );
+
+
+        if (clearButton) {
+
+            clearButton.addEventListener(
+                "click",
+                clearHistory
+            );
+
+        }
 
 
         /* =================================================
            RESET
-        ================================================== */
+        ================================================= */
 
-        document.getElementById(
-            "resetBtn"
-        ).addEventListener(
-            "click",
-            resetEverything
-        );
+        const resetButton =
+            document.getElementById(
+                "resetBtn"
+            );
+
+
+        if (resetButton) {
+
+            resetButton.addEventListener(
+                "click",
+                resetEverything
+            );
+
+        }
 
 
         /* =================================================
-           INITIAL DISPLAY
-        ================================================== */
+           INITIALIZE
+        ================================================= */
+
+        syncBalanceInputs();
 
         updatePreview();
 
