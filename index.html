@@ -1,368 +1,390 @@
+ChatGPT said:
+Yes. The previous version still had the old “starting balance + replay history” architecture mixed into it. That is what was causing the problem.
+
+Let's make it much simpler:
+
+New logic
+GCash input = actual current GCash
+Cash input = actual current Cash
+Coins input = actual current Coins
+Typing a new number updates the dashboard immediately.
+No Save button.
+It automatically saves to browser storage.
+Cash In / Cash Out continues to add/subtract from the current balances.
+Changing Paid ↔ Not Paid in history also adjusts the balance correctly.
+Deleting a transaction reverses its effect.
+Coins are never touched by transactions.
+Total Money = GCash + Cash, excluding coins.
+Fees only affect profit/unpaid fees.
+Replace your files with the following.
+
+1. index.html
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <title>GCash Cash-In & Cash-Out Calculator</title>
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
 
-    <link rel="stylesheet" href="style.css">
+    <title>GCash Puhunan Calculator</title>
+
+    <link
+        rel="stylesheet"
+        href="style.css"
+    >
 </head>
 
 <body>
 
-<div class="app">
+<header class="header">
 
-    <!-- HEADER -->
-    <header class="header">
+    <div class="header-content">
 
         <div class="logo">
-            <div class="logo-icon">G</div>
-            <span>GCash</span>
+            💙
         </div>
 
-        <div class="header-title">
-            CASH-IN & CASH-OUT
-        </div>
+        <div>
 
-        <div class="maximum">
-            MAXIMUM ₱50,000
-        </div>
+            <h1>
+                GCash Puhunan Calculator
+            </h1>
 
-    </header>
-
-
-    <!-- MAIN -->
-    <main class="calculator">
-
-        <h1>Fee Calculator</h1>
-
-        <p class="subtitle">
-            Enter customer transaction details
-        </p>
-
-
-        <!-- CUSTOMER -->
-        <div class="form-group">
-
-            <label for="customerName">
-                Customer Name
-            </label>
-
-            <input
-                type="text"
-                id="customerName"
-                placeholder="Enter customer name"
-                maxlength="100"
-            >
+            <p>
+                GCash • Cash • Coins • Fees • Paid / Unpaid
+            </p>
 
         </div>
 
+    </div>
 
-        <!-- CASH-IN -->
-        <div class="form-group">
+</header>
 
-            <label for="cashIn">
-                Cash-In Amount
-            </label>
 
-            <div class="input-wrapper">
+<main class="container">
 
-                <span class="peso-symbol">
-                    ₱
-                </span>
 
-                <input
-                    type="number"
-                    id="cashIn"
-                    placeholder="Enter amount"
-                    min="1"
-                    max="50000"
-                    step="0.01"
-                >
+    <!-- =====================================================
+         BALANCE DASHBOARD
+    ====================================================== -->
 
-            </div>
+    <section class="dashboard">
+
+        <!-- TOTAL -->
+
+        <div class="stat-card blue-card">
+
+            <span class="stat-label">
+                💰 Total Money
+            </span>
+
+            <strong id="totalMoney">
+                ₱0.00
+            </strong>
 
             <small>
-                Maximum transaction amount: ₱50,000
+                GCash + Cash only
             </small>
 
         </div>
 
 
-        <!-- CASH-IN TIME -->
-        <div class="form-group">
+        <!-- GCASH -->
 
-            <label for="cashInTime">
-                Cash-In Time
-            </label>
+        <div class="stat-card editable-card">
+
+            <span class="stat-label">
+                📱 GCash
+            </span>
+
+            <strong id="gcashBalance">
+                ₱12,000.00
+            </strong>
+
+            <small>
+                Edit below
+            </small>
 
             <input
-                type="datetime-local"
-                id="cashInTime"
+                type="number"
+                id="gcashInput"
+                class="balance-input"
+                min="0"
+                step="0.01"
+                value="12000"
+                placeholder="GCash"
             >
 
         </div>
 
 
-        <!-- PAYMENT TIME -->
-        <div class="form-group">
+        <!-- CASH -->
 
-            <label for="paymentTime">
-                Payment / Settlement Time
-            </label>
+        <div class="stat-card green-card editable-card">
+
+            <span class="stat-label">
+                💵 Cash on Hand
+            </span>
+
+            <strong id="cashBalance">
+                ₱12,000.00
+            </strong>
+
+            <small>
+                Edit below
+            </small>
 
             <input
-                type="datetime-local"
-                id="paymentTime"
+                type="number"
+                id="cashInput"
+                class="balance-input"
+                min="0"
+                step="0.01"
+                value="12000"
+                placeholder="Cash"
             >
 
         </div>
 
 
-        <!-- SETTLEMENT -->
-        <div class="settlement-box">
+        <!-- COINS -->
+
+        <div class="stat-card purple-card editable-card">
+
+            <span class="stat-label">
+                🪙 Coins
+            </span>
+
+            <strong id="coinsBalance">
+                ₱500.00
+            </strong>
+
+            <small>
+                Independent balance
+            </small>
 
             <input
-                type="checkbox"
-                id="settled"
+                type="number"
+                id="coinsInput"
+                class="balance-input"
+                min="0"
+                step="0.01"
+                value="500"
+                placeholder="Coins"
             >
-
-            <label for="settled">
-                Previous debt has been settled
-            </label>
 
         </div>
 
 
-        <!-- BUTTONS -->
-        <button
-            type="button"
-            class="calculate-btn"
-            onclick="calculateFee()"
-        >
-            CALCULATE & SAVE
-        </button>
+        <!-- PROFIT -->
 
-        <button
-            type="button"
-            class="clear-btn"
-            onclick="clearCalculator()"
-        >
-            CLEAR
-        </button>
+        <div class="stat-card orange-card">
 
+            <span class="stat-label">
+                📈 Fee Profit
+            </span>
 
-        <!-- ERROR -->
-        <div
-            id="errorMessage"
-            class="error"
-        ></div>
+            <strong id="profit">
+                ₱0.00
+            </strong>
+
+            <small>
+                Paid fees only
+            </small>
+
+        </div>
 
 
-        <!-- RESULT -->
-        <div
-            id="result"
-            class="result"
-        >
+        <!-- CUSTOMER OWES -->
+
+        <div class="stat-card red-card">
+
+            <span class="stat-label">
+                📌 Customer Owes
+            </span>
+
+            <strong id="receivable">
+                ₱0.00
+            </strong>
+
+            <small>
+                Unpaid amounts
+            </small>
+
+        </div>
+
+
+        <!-- TRANSACTIONS -->
+
+        <div class="stat-card">
+
+            <span class="stat-label">
+                🔄 Transactions
+            </span>
+
+            <strong id="transactionCount">
+                0
+            </strong>
+
+            <small>
+                Total records
+            </small>
+
+        </div>
+
+    </section>
+
+
+    <!-- =====================================================
+         NEW TRANSACTION
+    ====================================================== -->
+
+    <section class="panel">
+
+        <div class="panel-title">
 
             <h2>
-                Transaction Summary
+                ➕ New Transaction
             </h2>
 
+            <p>
+                Add Cash In or Cash Out.
+            </p>
 
-            <div class="result-row">
-                <span>Customer</span>
-                <strong id="resultName">-</strong>
+        </div>
+
+
+        <div class="form-grid">
+
+            <!-- CUSTOMER -->
+
+            <div class="form-group">
+
+                <label>
+                    👤 Customer Name
+                </label>
+
+                <input
+                    type="text"
+                    id="customerName"
+                    placeholder="Enter customer name"
+                >
+
             </div>
 
 
-            <div class="result-row">
-                <span>Cash-In Amount</span>
-                <strong id="resultCashIn">₱0.00</strong>
+            <!-- TYPE -->
+
+            <div class="form-group">
+
+                <label>
+                    🔄 Transaction Type
+                </label>
+
+                <select id="transactionType">
+
+                    <option value="cashin">
+                        Cash In
+                    </option>
+
+                    <option value="cashout">
+                        Cash Out
+                    </option>
+
+                </select>
+
             </div>
 
 
-            <div class="result-row">
-                <span>Cash-In Time</span>
-                <strong id="resultCashInTime">-</strong>
+            <!-- AMOUNT -->
+
+            <div class="form-group">
+
+                <label>
+                    💰 Amount
+                </label>
+
+                <input
+                    type="number"
+                    id="amount"
+                    min="0"
+                    step="0.01"
+                    placeholder="Example: 500"
+                >
+
             </div>
 
 
-            <div class="result-row">
-                <span>Payment Time</span>
-                <strong id="resultPaymentTime">-</strong>
+            <!-- FEE -->
+
+            <div class="form-group">
+
+                <label>
+                    💸 Fee / Penalty
+                </label>
+
+                <input
+                    type="number"
+                    id="fee"
+                    min="0"
+                    step="0.01"
+                    placeholder="Fee"
+                >
+
+                <small class="input-help">
+                    Automatically calculated.
+                    You can change it.
+                </small>
+
             </div>
 
-
-            <div class="result-row">
-                <span>Elapsed Time</span>
-                <strong id="resultElapsedTime">-</strong>
-            </div>
+        </div>
 
 
-            <div class="result-row">
-                <span>Completed Hours</span>
-                <strong id="resultCompletedHours">0</strong>
-            </div>
+        <!-- =================================================
+             PREVIEW
+        ================================================== -->
 
+        <div class="fee-preview">
 
-            <div class="result-row">
-                <span>Full Late Days</span>
-                <strong id="resultLateDays">0</strong>
-            </div>
-
-
-            <div class="result-row">
-                <span>Base Fee</span>
-                <strong id="resultBaseFee">₱0.00</strong>
-            </div>
-
-
-            <div class="result-row">
-                <span>Day Penalty</span>
-                <strong id="resultDayPenalty">₱0.00</strong>
-            </div>
-
-
-            <div class="result-row">
-                <span>Chargeable Hours</span>
-                <strong id="resultChargeableHours">0</strong>
-            </div>
-
-
-            <div class="result-row">
-                <span>Hourly Penalty</span>
-                <strong id="resultHourlyPenalty">₱0.00</strong>
-            </div>
-
-
-            <div class="result-row">
-                <span>Raw Late Penalty</span>
-                <strong id="resultRawPenalty">₱0.00</strong>
-            </div>
-
-
-            <div class="result-row">
-                <span>Rounded Late Penalty</span>
-                <strong id="resultPenalty">₱0.00</strong>
-            </div>
-
-
-            <div class="result-row">
-                <span>Raw Total Fee</span>
-                <strong id="resultRawFee">₱0.00</strong>
-            </div>
-
-
-            <div class="result-row">
-                <span>Rounded Total Fee</span>
-                <strong id="resultFee">₱0.00</strong>
-            </div>
-
-
-            <div class="total-row">
+            <div>
 
                 <span>
-                    TOTAL TO PAY
+                    Amount
                 </span>
 
-                <strong id="resultTotal">
+                <strong id="previewAmount">
                     ₱0.00
                 </strong>
 
             </div>
 
 
-            <div
-                id="breakdown"
-                class="breakdown"
-            ></div>
-
-        </div>
-
-
-        <!-- BASE FEE TABLE -->
-        <div class="fee-table">
-
-            <h2>
-                Base Fee Schedule
-            </h2>
-
-
-            <div class="fee-header">
+            <div>
 
                 <span>
-                    AMOUNT
+                    Fee
                 </span>
 
-                <span>
-                    FEE
-                </span>
-
-            </div>
-
-
-            <div class="fee-row">
-
-                <span>
-                    ₱1 – ₱500
-                </span>
-
-                <strong>
-                    ₱5
+                <strong id="previewFee">
+                    ₱0.00
                 </strong>
 
             </div>
 
 
-            <div class="fee-row">
+            <div>
 
                 <span>
-                    ₱501 – ₱1,999
+                    Transaction Total
                 </span>
 
-                <strong>
-                    ₱10
-                </strong>
-
-            </div>
-
-
-            <div class="fee-row">
-
-                <span>
-                    ₱2,000 – ₱5,000
-                </span>
-
-                <strong>
-                    ₱15
-                </strong>
-
-            </div>
-
-
-            <div class="fee-row">
-
-                <span>
-                    ₱5,001 – ₱9,999
-                </span>
-
-                <strong>
-                    ₱35
-                </strong>
-
-            </div>
-
-
-            <div class="fee-row">
-
-                <span>
-                    ₱10,000 – ₱50,000
-                </span>
-
-                <strong>
-                    ₱60
+                <strong id="previewTotal">
+                    ₱0.00
                 </strong>
 
             </div>
@@ -370,189 +392,365 @@
         </div>
 
 
-        <!-- RULES -->
-        <div class="rules">
+        <!-- =================================================
+             PAYMENT STATUS
+        ================================================== -->
 
-            <h2>
-                Late Fee Rules
-            </h2>
+        <div class="status-section">
 
+            <!-- AMOUNT -->
 
-            <div class="rule">
+            <div class="status-box">
 
-                <strong>
-                    Below ₱100
-                </strong>
+                <label>
+                    Amount Payment
+                </label>
 
-                <p>
-                    No late penalty.
-                </p>
+                <div class="status-buttons">
 
-            </div>
+                    <label class="radio-option paid-option">
 
+                        <input
+                            type="radio"
+                            name="amountStatus"
+                            value="paid"
+                            checked
+                        >
 
-            <div class="rule">
+                        <span>
+                            ✓ Paid
+                        </span>
 
-                <strong>
-                    ₱100 – ₱1,999
-                </strong>
-
-                <p>
-                    First 4 hours free.<br>
-                    ₱1 per chargeable hour.<br>
-                    ₱2 per completed 24-hour day.
-                </p>
-
-            </div>
+                    </label>
 
 
-            <div class="rule">
+                    <label class="radio-option unpaid-option">
 
-                <strong>
-                    ₱2,000 and above
-                </strong>
+                        <input
+                            type="radio"
+                            name="amountStatus"
+                            value="unpaid"
+                        >
 
-                <p>
-                    Day 1 = ₱50.<br>
-                    Day 2 onward = ₱30 per completed day.<br>
-                    No hourly penalty.
-                </p>
+                        <span>
+                            ✕ Not Paid
+                        </span>
 
-            </div>
-
-
-            <div class="rule">
-
-                <strong>
-                    FEE ROUNDING
-                </strong>
-
-                <p>
-                    Final fee rounded to nearest ₱5.
-                </p>
-
-            </div>
-
-
-            <div class="rule">
-
-                <strong>
-                    TOTAL TO PAY
-                </strong>
-
-                <p>
-                    Cash-In Amount + Total Fee.
-                </p>
-
-            </div>
-
-
-            <div class="rule no-settlement">
-
-                <strong>
-                    NO SETTLEMENT, NO CASH-IN
-                </strong>
-
-                <p>
-                    Previous debt must be settled.
-                </p>
-
-            </div>
-
-        </div>
-
-
-        <!-- DATABASE -->
-        <section class="database">
-
-            <div class="database-header">
-
-                <div>
-
-                    <h2>
-                        Transaction Database
-                    </h2>
-
-                    <p>
-                        Saved transactions:
-                        <strong id="recordCount">
-                            0
-                        </strong>
-                    </p>
+                    </label>
 
                 </div>
 
+            </div>
 
-                <button
-                    type="button"
-                    class="delete-all-btn"
-                    onclick="deleteAllRecords()"
-                >
-                    DELETE ALL
-                </button>
+
+            <!-- FEE -->
+
+            <div class="status-box">
+
+                <label>
+                    Fee / Penalty Payment
+                </label>
+
+                <div class="status-buttons">
+
+                    <label class="radio-option paid-option">
+
+                        <input
+                            type="radio"
+                            name="feeStatus"
+                            value="paid"
+                            checked
+                        >
+
+                        <span>
+                            ✓ Paid
+                        </span>
+
+                    </label>
+
+
+                    <label class="radio-option unpaid-option">
+
+                        <input
+                            type="radio"
+                            name="feeStatus"
+                            value="unpaid"
+                        >
+
+                        <span>
+                            ✕ Not Paid
+                        </span>
+
+                    </label>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <div
+            id="formMessage"
+            class="message"
+        ></div>
+
+
+        <button
+            class="btn btn-primary"
+            id="addTransactionBtn"
+            type="button"
+        >
+            ➕ Add Transaction
+        </button>
+
+    </section>
+
+
+    <!-- =====================================================
+         FEE TABLE
+    ====================================================== -->
+
+    <section class="panel">
+
+        <div class="panel-title">
+
+            <h2>
+                💸 Default Fee Schedule
+            </h2>
+
+            <p>
+                Automatic fee based on amount.
+            </p>
+
+        </div>
+
+
+        <div class="table-wrapper">
+
+            <table class="fee-table">
+
+                <thead>
+
+                    <tr>
+                        <th>Amount</th>
+                        <th>Fee</th>
+                    </tr>
+
+                </thead>
+
+                <tbody>
+
+                    <tr>
+                        <td>₱1 – ₱500</td>
+                        <td class="fee-text">₱5</td>
+                    </tr>
+
+                    <tr>
+                        <td>₱501 – ₱1,999</td>
+                        <td class="fee-text">₱10</td>
+                    </tr>
+
+                    <tr>
+                        <td>₱2,000 – ₱5,000</td>
+                        <td class="fee-text">₱15</td>
+                    </tr>
+
+                    <tr>
+                        <td>₱5,001 – ₱9,999</td>
+                        <td class="fee-text">₱35</td>
+                    </tr>
+
+                    <tr>
+                        <td>₱10,000+</td>
+                        <td class="fee-text">₱60</td>
+                    </tr>
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+    </section>
+
+
+    <!-- =====================================================
+         HISTORY
+    ====================================================== -->
+
+    <section class="panel">
+
+        <div class="history-header">
+
+            <div>
+
+                <h2>
+                    📋 Transaction History
+                </h2>
+
+                <p>
+                    Change Paid / Not Paid or edit fees anytime.
+                </p>
 
             </div>
 
 
-            <!-- SEARCH -->
-            <div class="search-box">
+            <button
+                class="btn btn-danger small-btn"
+                id="clearHistoryBtn"
+                type="button"
+            >
+                🗑 Clear History
+            </button>
 
-                <input
-                    type="text"
-                    id="searchInput"
-                    placeholder="Search customer name..."
-                    oninput="displayRecords()"
-                >
+        </div>
+
+
+        <!-- SUMMARY -->
+
+        <div class="history-summary">
+
+            <div>
+
+                <span>
+                    Paid Amount
+                </span>
+
+                <strong id="paidAmountTotal">
+                    ₱0.00
+                </strong>
+
+            </div>
+
+
+            <div>
+
+                <span>
+                    Unpaid Amount
+                </span>
+
+                <strong id="unpaidAmountTotal">
+                    ₱0.00
+                </strong>
 
             </div>
 
 
-            <!-- TABLE -->
-            <div class="table-container">
+            <div>
 
-                <table>
+                <span>
+                    Paid Fees
+                </span>
 
-                    <thead>
-
-                        <tr>
-
-                            <th>Date</th>
-                            <th>Customer</th>
-                            <th>Cash-In</th>
-                            <th>Cash-In Time</th>
-                            <th>Payment Time</th>
-                            <th>Hours</th>
-                            <th>Base Fee</th>
-                            <th>Day Penalty</th>
-                            <th>Chargeable Hours</th>
-                            <th>Hour Penalty</th>
-                            <th>Late Penalty</th>
-                            <th>Total Fee</th>
-                            <th>Total Pay</th>
-                            <th>Action</th>
-
-                        </tr>
-
-                    </thead>
-
-
-                    <tbody id="transactionTable">
-
-                    </tbody>
-
-                </table>
+                <strong id="paidFeeTotal">
+                    ₱0.00
+                </strong>
 
             </div>
 
-        </section>
 
-    </main>
+            <div>
 
-</div>
+                <span>
+                    Unpaid Fees
+                </span>
+
+                <strong id="unpaidFeeTotal">
+                    ₱0.00
+                </strong>
+
+            </div>
+
+        </div>
 
 
-<!-- JAVASCRIPT -->
+        <div class="table-wrapper">
+
+            <table class="history-table">
+
+                <thead>
+
+                    <tr>
+
+                        <th>Date</th>
+                        <th>Customer</th>
+                        <th>Type</th>
+                        <th>Amount</th>
+                        <th>Amount Status</th>
+                        <th>Fee / Penalty</th>
+                        <th>Fee Status</th>
+                        <th>Action</th>
+
+                    </tr>
+
+                </thead>
+
+                <tbody id="historyBody"></tbody>
+
+            </table>
+
+        </div>
+
+
+        <div
+            id="emptyHistory"
+            class="empty-history"
+        >
+            📭 No transactions yet.
+        </div>
+
+    </section>
+
+
+    <!-- =====================================================
+         RESET
+    ====================================================== -->
+
+    <section class="danger-panel">
+
+        <div>
+
+            <h3>
+                ⚠️ Reset Calculator
+            </h3>
+
+            <p>
+                Delete transactions and restore:
+                GCash ₱12,000,
+                Cash ₱12,000,
+                Coins ₱500.
+            </p>
+
+        </div>
+
+
+        <button
+            class="btn btn-danger"
+            id="resetBtn"
+            type="button"
+        >
+            Reset Everything
+        </button>
+
+    </section>
+
+</main>
+
+
+<footer>
+
+    GCash Puhunan Calculator
+
+    <br>
+
+    Data is stored locally in your browser.
+
+</footer>
+
+
 <script src="script.js"></script>
 
 </body>
+
 </html>
