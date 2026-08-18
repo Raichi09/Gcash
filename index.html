@@ -1,24 +1,3 @@
-ChatGPT said:
-Yes. The previous version still had the old “starting balance + replay history” architecture mixed into it. That is what was causing the problem.
-
-Let's make it much simpler:
-
-New logic
-GCash input = actual current GCash
-Cash input = actual current Cash
-Coins input = actual current Coins
-Typing a new number updates the dashboard immediately.
-No Save button.
-It automatically saves to browser storage.
-Cash In / Cash Out continues to add/subtract from the current balances.
-Changing Paid ↔ Not Paid in history also adjusts the balance correctly.
-Deleting a transaction reverses its effect.
-Coins are never touched by transactions.
-Total Money = GCash + Cash, excluding coins.
-Fees only affect profit/unpaid fees.
-Replace your files with the following.
-
-1. index.html
 <!DOCTYPE html>
 <html lang="en">
 
