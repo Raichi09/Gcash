@@ -6,7 +6,12 @@
 
     <meta
         name="viewport"
-        content="width=device-width, initial-scale=1.0"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    >
+
+    <meta
+        name="theme-color"
+        content="#1677ff"
     >
 
     <title>GCash Puhunan Calculator</title>
@@ -28,15 +33,11 @@
         </div>
 
         <div>
-
-            <h1>
-                GCash Puhunan Calculator
-            </h1>
+            <h1>GCash Puhunan Calculator</h1>
 
             <p>
                 GCash • Cash • Coins • Fees • Paid / Unpaid
             </p>
-
         </div>
 
     </div>
@@ -46,9 +47,8 @@
 
 <main class="container">
 
-
     <!-- =====================================================
-         BALANCE DASHBOARD
+         DASHBOARD
     ====================================================== -->
 
     <section class="dashboard">
@@ -62,7 +62,7 @@
             </span>
 
             <strong id="totalMoney">
-                ₱0.00
+                ₱24,000.00
             </strong>
 
             <small>
@@ -85,7 +85,7 @@
             </strong>
 
             <small>
-                Edit below
+                Edit balance directly
             </small>
 
             <input
@@ -114,7 +114,7 @@
             </strong>
 
             <small>
-                Edit below
+                Edit balance directly
             </small>
 
             <input
@@ -315,8 +315,7 @@
                 >
 
                 <small class="input-help">
-                    Automatically calculated.
-                    You can change it.
+                    Automatically calculated. You can change it.
                 </small>
 
             </div>
@@ -324,60 +323,42 @@
         </div>
 
 
-        <!-- =================================================
-             PREVIEW
-        ================================================== -->
+        <!-- PREVIEW -->
 
         <div class="fee-preview">
 
             <div>
-
-                <span>
-                    Amount
-                </span>
+                <span>Amount</span>
 
                 <strong id="previewAmount">
                     ₱0.00
                 </strong>
-
             </div>
 
 
             <div>
-
-                <span>
-                    Fee
-                </span>
+                <span>Fee</span>
 
                 <strong id="previewFee">
                     ₱0.00
                 </strong>
-
             </div>
 
 
             <div>
-
-                <span>
-                    Transaction Total
-                </span>
+                <span>Transaction Total</span>
 
                 <strong id="previewTotal">
                     ₱0.00
                 </strong>
-
             </div>
 
         </div>
 
 
-        <!-- =================================================
-             PAYMENT STATUS
-        ================================================== -->
+        <!-- PAYMENT STATUS -->
 
         <div class="status-section">
-
-            <!-- AMOUNT -->
 
             <div class="status-box">
 
@@ -421,8 +402,6 @@
 
             </div>
 
-
-            <!-- FEE -->
 
             <div class="status-box">
 
@@ -586,59 +565,41 @@
         </div>
 
 
-        <!-- SUMMARY -->
-
         <div class="history-summary">
 
             <div>
-
-                <span>
-                    Paid Amount
-                </span>
+                <span>Paid Amount</span>
 
                 <strong id="paidAmountTotal">
                     ₱0.00
                 </strong>
-
             </div>
 
 
             <div>
-
-                <span>
-                    Unpaid Amount
-                </span>
+                <span>Unpaid Amount</span>
 
                 <strong id="unpaidAmountTotal">
                     ₱0.00
                 </strong>
-
             </div>
 
 
             <div>
-
-                <span>
-                    Paid Fees
-                </span>
+                <span>Paid Fees</span>
 
                 <strong id="paidFeeTotal">
                     ₱0.00
                 </strong>
-
             </div>
 
 
             <div>
-
-                <span>
-                    Unpaid Fees
-                </span>
+                <span>Unpaid Fees</span>
 
                 <strong id="unpaidFeeTotal">
                     ₱0.00
                 </strong>
-
             </div>
 
         </div>
@@ -651,7 +612,6 @@
                 <thead>
 
                     <tr>
-
                         <th>Date</th>
                         <th>Customer</th>
                         <th>Type</th>
@@ -660,7 +620,6 @@
                         <th>Fee / Penalty</th>
                         <th>Fee Status</th>
                         <th>Action</th>
-
                     </tr>
 
                 </thead>
@@ -731,5 +690,4 @@
 <script src="script.js"></script>
 
 </body>
-
 </html>
