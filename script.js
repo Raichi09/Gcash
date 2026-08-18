@@ -1,908 +1,2301 @@
-const DATABASE_KEY = "cashin_transactions_v6";
+/* =========================================================
+   GCASH PUHUNAN CALCULATOR
+   SIMPLE CURRENT-BALANCE SYSTEM
+========================================================= */
 
-const HOURS_PER_DAY = 24;
-const FREE_HOURS = 4;
 
-const HOURLY_RATE = 1;
+/* =========================================================
+   DEFAULT BALANCES
+========================================================= */
 
-const DAY_PENALTY = 2;
+const DEFAULT_DATA = {
 
-const HIGH_FIRST_DAY = 50;
-const HIGH_NEXT_DAY = 30;
+    gcash: 12000,
 
+    cash: 12000,
 
-function roundToFive(amount) {
-    return Math.round(amount / 5) * 5;
-}
+    coins: 500,
 
+    transactions: []
 
-function peso(amount) {
-    return new Intl.NumberFormat("en-PH", {
-        style: "currency",
-        currency: "PHP",
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-    }).format(amount);
-}
+};
 
 
-function getElement(id) {
-    return document.getElementById(id);
-}
+const STORAGE_KEY =
+    "gcashPuhunanCalculatorV7";
 
 
-function setText(id, value) {
-    const element = getElement(id);
+/* =========================================================
+   LOAD
+========================================================= */
 
-    if (element) {
-        element.textContent = value;
-    }
-}
+let data;
 
-
-function getBaseFee(amount) {
-
-    if (amount >= 1 && amount <= 500) {
-        return 5;
-    }
-
-    if (amount >= 501 && amount <= 1999) {
-        return 10;
-    }
-
-    if (amount >= 2000 && amount <= 5000) {
-        return 15;
-    }
-
-    if (amount >= 5001 && amount <= 9999) {
-        return 35;
-    }
-
-    if (amount >= 10000 && amount <= 50000) {
-        return 60;
-    }
-
-    return null;
-}
-
-
-function getDateTime(id) {
-
-    const element = getElement(id);
-
-    if (!element || !element.value) {
-        return null;
-    }
-
-    const date = new Date(element.value);
-
-    if (isNaN(date.getTime())) {
-        return null;
-    }
-
-    return date;
-}
-
-
-function calculateElapsed(start, end) {
-
-    const difference = end.getTime() - start.getTime();
-
-    if (difference < 0) {
-        return null;
-    }
-
-    const totalMinutes = Math.floor(
-        difference / (1000 * 60)
-    );
-
-    const totalHours = Math.floor(
-        totalMinutes / 60
-    );
-
-    const minutes = totalMinutes % 60;
-
-    const days = Math.floor(
-        totalHours / HOURS_PER_DAY
-    );
-
-    const hours = totalHours % HOURS_PER_DAY;
-
-    return {
-        totalHours,
-        days,
-        hours,
-        minutes
-    };
-}
-
-
-function calculateFee() {
-
-    const customerName =
-        getElement("customerName").value.trim();
-
-    const cashIn =
-        parseFloat(getElement("cashIn").value);
-
-    const cashInTime =
-        getDateTime("cashInTime");
-
-    const paymentTime =
-        getDateTime("paymentTime");
-
-    const settled =
-        getElement("settled").checked;
-
-
-    clearMessage();
-
-
-    if (!customerName) {
-        showError("Please enter the customer name.");
-        return;
-    }
-
-
-    if (!Number.isFinite(cashIn) || cashIn <= 0) {
-        showError("Please enter a valid cash-in amount.");
-        return;
-    }
-
-
-    if (cashIn > 50000) {
-        showError("Maximum transaction amount is ₱50,000.");
-        return;
-    }
-
-
-    if (!cashInTime) {
-        showError("Please enter the cash-in date and time.");
-        return;
-    }
-
-
-    if (!paymentTime) {
-        showError("Please enter the payment date and time.");
-        return;
-    }
-
-
-    if (paymentTime < cashInTime) {
-        showError(
-            "Payment time cannot be earlier than cash-in time."
-        );
-        return;
-    }
-
-
-    const elapsed =
-        calculateElapsed(cashInTime, paymentTime);
-
-
-    if (!elapsed) {
-        showError("Unable to calculate elapsed time.");
-        return;
-    }
-
-
-    const totalHours =
-        elapsed.totalHours;
-
-    const lateDays =
-        Math.floor(totalHours / HOURS_PER_DAY);
-
-    const remainingHours =
-        totalHours % HOURS_PER_DAY;
-
-
-    if (totalHours > 0 && !settled) {
-
-        showError(
-            "NO SETTLEMENT, NO CASH-IN: Please settle the previous debt first."
-        );
-
-        return;
-    }
-
-
-    const baseFee =
-        getBaseFee(cashIn);
-
-
-    if (baseFee === null) {
-        showError("Could not determine the base fee.");
-        return;
-    }
-
-
-    let dayPenalty = 0;
-    let chargeableHours = 0;
-    let hourlyPenalty = 0;
-    let rawLatePenalty = 0;
-    let roundedLatePenalty = 0;
-
-
-    /*
-        BELOW ₱100
-        NO LATE PENALTY
-    */
-
-    if (cashIn < 100) {
-
-        dayPenalty = 0;
-        chargeableHours = 0;
-        hourlyPenalty = 0;
-        rawLatePenalty = 0;
-        roundedLatePenalty = 0;
-
-    }
-
-
-    /*
-        ₱100 – ₱1,999
-
-        First 4 hours FREE.
-
-        Every completed 24 hours:
-        ₱2 day penalty.
-
-        Every chargeable hour:
-        ₱1/hour.
-    */
-
-    else if (cashIn <= 1999) {
-
-        dayPenalty =
-            lateDays * DAY_PENALTY;
-
-
-        const fullDayChargeableHours =
-            lateDays *
-            (HOURS_PER_DAY - FREE_HOURS);
-
-
-        let extraChargeableHours = 0;
-
-
-        if (remainingHours > FREE_HOURS) {
-
-            extraChargeableHours =
-                remainingHours - FREE_HOURS;
-
-        }
-
-
-        chargeableHours =
-            fullDayChargeableHours +
-            extraChargeableHours;
-
-
-        hourlyPenalty =
-            chargeableHours * HOURLY_RATE;
-
-
-        rawLatePenalty =
-            dayPenalty +
-            hourlyPenalty;
-
-
-        roundedLatePenalty =
-            roundToFive(rawLatePenalty);
-
-    }
-
-
-    /*
-        ₱2,000 AND ABOVE
-
-        Day 1 = ₱50
-
-        Day 2 onward = ₱30/day
-
-        NO HOURLY PENALTY
-    */
-
-    else {
-
-        chargeableHours = 0;
-        hourlyPenalty = 0;
-
-
-        if (lateDays >= 1) {
-
-            dayPenalty =
-                HIGH_FIRST_DAY +
-                ((lateDays - 1) * HIGH_NEXT_DAY);
-
-            rawLatePenalty =
-                dayPenalty;
-
-            roundedLatePenalty =
-                roundToFive(rawLatePenalty);
-
-        }
-
-    }
-
-
-    const rawTotalFee =
-        baseFee + roundedLatePenalty;
-
-
-    const totalFee =
-        roundToFive(rawTotalFee);
-
-
-    const totalToPay =
-        cashIn + totalFee;
-
-
-    setText(
-        "resultName",
-        customerName
-    );
-
-    setText(
-        "resultCashIn",
-        peso(cashIn)
-    );
-
-    setText(
-        "resultCashInTime",
-        formatDate(cashInTime)
-    );
-
-    setText(
-        "resultPaymentTime",
-        formatDate(paymentTime)
-    );
-
-    setText(
-        "resultElapsedTime",
-        `${elapsed.days} day(s), ${elapsed.hours} hour(s), ${elapsed.minutes} minute(s)`
-    );
-
-    setText(
-        "resultCompletedHours",
-        totalHours
-    );
-
-    setText(
-        "resultLateDays",
-        lateDays
-    );
-
-    setText(
-        "resultBaseFee",
-        peso(baseFee)
-    );
-
-    setText(
-        "resultDayPenalty",
-        peso(dayPenalty)
-    );
-
-    setText(
-        "resultChargeableHours",
-        chargeableHours
-    );
-
-    setText(
-        "resultHourlyPenalty",
-        peso(hourlyPenalty)
-    );
-
-    setText(
-        "resultRawPenalty",
-        peso(rawLatePenalty)
-    );
-
-    setText(
-        "resultPenalty",
-        peso(roundedLatePenalty)
-    );
-
-    setText(
-        "resultRawFee",
-        peso(rawTotalFee)
-    );
-
-    setText(
-        "resultFee",
-        peso(totalFee)
-    );
-
-    setText(
-        "resultTotal",
-        peso(totalToPay)
-    );
-
-
-    const breakdown =
-        getElement("breakdown");
-
-
-    breakdown.innerHTML = `
-        <div class="breakdown-title">
-            Fee Calculation Breakdown
-        </div>
-
-        <strong>Cash-In:</strong>
-        ${peso(cashIn)}
-
-        <br>
-
-        <strong>Base Fee:</strong>
-        ${peso(baseFee)}
-
-        <br>
-
-        <strong>Elapsed:</strong>
-        ${elapsed.days} day(s),
-        ${elapsed.hours} hour(s),
-        ${elapsed.minutes} minute(s)
-
-        <br>
-
-        <strong>Completed Hours:</strong>
-        ${totalHours}
-
-        <br>
-
-        <strong>Full Late Days:</strong>
-        ${lateDays}
-
-        <br>
-
-        <strong>Day Penalty:</strong>
-        ${peso(dayPenalty)}
-
-        <br>
-
-        <strong>Chargeable Hours:</strong>
-        ${chargeableHours}
-
-        <br>
-
-        <strong>Hourly Rate:</strong>
-        ${cashIn >= 100 && cashIn <= 1999
-            ? "₱1.00/hour"
-            : "None"
-        }
-
-        <br>
-
-        <strong>Hourly Penalty:</strong>
-        ${peso(hourlyPenalty)}
-
-        <br>
-
-        <strong>Late Penalty:</strong>
-        ${peso(roundedLatePenalty)}
-
-        <br>
-
-        <strong>Final Fee:</strong>
-        ${peso(totalFee)}
-
-        <br><br>
-
-        <strong>TOTAL TO PAY:</strong>
-        ${peso(totalToPay)}
-    `;
-
-
-    getElement("result").style.display = "block";
-
-
-    saveTransaction({
-
-        id: createTransactionId(),
-
-        date: new Date().toISOString(),
-
-        customerName,
-
-        cashIn,
-
-        cashInTime: cashInTime.toISOString(),
-
-        paymentTime: paymentTime.toISOString(),
-
-        elapsedDays: elapsed.days,
-
-        elapsedHours: elapsed.hours,
-
-        elapsedMinutes: elapsed.minutes,
-
-        completedHours: totalHours,
-
-        lateDays,
-
-        baseFee,
-
-        remainingHours,
-
-        dayPenalty,
-
-        chargeableHours,
-
-        hourlyPenalty,
-
-        rawLatePenalty,
-
-        latePenalty: roundedLatePenalty,
-
-        rawTotalFee,
-
-        totalFee,
-
-        totalToPay,
-
-        settled
-
-    });
-
-}
-
-
-function createTransactionId() {
-
-    return (
-        "TXN-" +
-        Date.now() +
-        "-" +
-        Math.floor(
-            1000 + Math.random() * 9000
-        )
-    );
-}
-
-
-function saveTransaction(transaction) {
-
-    const transactions =
-        getTransactions();
-
-    transactions.unshift(transaction);
-
-    saveTransactions(transactions);
-
-    displayRecords();
-}
-
-
-function getTransactions() {
+try {
 
     const saved =
-        localStorage.getItem(DATABASE_KEY);
+        localStorage.getItem(
+            STORAGE_KEY
+        );
 
+    if (saved) {
 
-    if (!saved) {
-        return [];
-    }
-
-
-    try {
-
-        const data =
+        data =
             JSON.parse(saved);
 
-        return Array.isArray(data)
-            ? data
-            : [];
+    } else {
 
-    } catch (error) {
+        data =
+            JSON.parse(
+                JSON.stringify(
+                    DEFAULT_DATA
+                )
+            );
 
-        console.error(error);
-
-        return [];
     }
+
+} catch (error) {
+
+    data =
+        JSON.parse(
+            JSON.stringify(
+                DEFAULT_DATA
+            )
+        );
+
 }
 
 
-function saveTransactions(transactions) {
+/* =========================================================
+   MAKE SURE DATA IS VALID
+========================================================= */
+
+function prepareData() {
+
+    if (
+        typeof data.gcash !== "number" ||
+        !Number.isFinite(data.gcash)
+    ) {
+
+        data.gcash = 12000;
+
+    }
+
+
+    if (
+        typeof data.cash !== "number" ||
+        !Number.isFinite(data.cash)
+    ) {
+
+        data.cash = 12000;
+
+    }
+
+
+    if (
+        typeof data.coins !== "number" ||
+        !Number.isFinite(data.coins)
+    ) {
+
+        data.coins = 500;
+
+    }
+
+
+    if (
+        !Array.isArray(data.transactions)
+    ) {
+
+        data.transactions = [];
+
+    }
+
+
+    data.transactions =
+        data.transactions.map(
+            transaction => ({
+
+                id:
+                    transaction.id ||
+                    Date.now() +
+                    Math.random(),
+
+                date:
+                    transaction.date ||
+                    new Date().toLocaleString(
+                        "en-PH"
+                    ),
+
+                customer:
+                    transaction.customer ||
+                    "Unknown",
+
+                type:
+                    transaction.type ===
+                    "cashout"
+                        ? "cashout"
+                        : "cashin",
+
+                amount:
+                    roundMoney(
+                        transaction.amount
+                    ),
+
+                fee:
+                    roundMoney(
+                        transaction.fee
+                    ),
+
+                amountStatus:
+                    transaction.amountStatus ===
+                    "unpaid"
+                        ? "unpaid"
+                        : "paid",
+
+                feeStatus:
+                    transaction.feeStatus ===
+                    "unpaid"
+                        ? "unpaid"
+                        : "paid"
+
+            })
+        );
+
+}
+
+
+prepareData();
+
+
+/* =========================================================
+   SAVE
+========================================================= */
+
+function saveData() {
 
     localStorage.setItem(
-        DATABASE_KEY,
-        JSON.stringify(transactions)
+        STORAGE_KEY,
+        JSON.stringify(data)
     );
+
 }
 
 
-function displayRecords() {
+/* =========================================================
+   MONEY
+========================================================= */
 
-    const table =
-        getElement("transactionTable");
+function roundMoney(value) {
 
-    const count =
-        getElement("recordCount");
+    return Math.round(
+        (Number(value) || 0) * 100
+    ) / 100;
+
+}
 
 
-    if (!table) {
-        return;
+function peso(value) {
+
+    return new Intl.NumberFormat(
+        "en-PH",
+        {
+            style: "currency",
+            currency: "PHP"
+        }
+    ).format(
+        Number(value) || 0
+    );
+
+}
+
+
+/* =========================================================
+   FEE
+========================================================= */
+
+function calculateFee(amount) {
+
+    amount =
+        Number(amount) || 0;
+
+
+    if (amount <= 0) {
+
+        return 0;
+
     }
 
+    if (amount <= 500) {
 
-    const transactions =
-        getTransactions();
+        return 5;
+
+    }
+
+    if (amount <= 1999) {
+
+        return 10;
+
+    }
+
+    if (amount <= 5000) {
+
+        return 15;
+
+    }
+
+    if (amount <= 9999) {
+
+        return 35;
+
+    }
+
+    return 60;
+
+}
 
 
-    const searchElement =
-        getElement("searchInput");
+/* =========================================================
+   BALANCES
+========================================================= */
+
+function getBalances() {
+
+    const gcash =
+        roundMoney(data.gcash);
+
+    const cash =
+        roundMoney(data.cash);
+
+    const coins =
+        roundMoney(data.coins);
 
 
-    const search =
-        searchElement
-            ? searchElement.value.trim().toLowerCase()
-            : "";
+    /*
+     * IMPORTANT:
+     *
+     * Coins are NOT included.
+     */
 
-
-    const filtered =
-        transactions.filter(transaction =>
-            String(
-                transaction.customerName || ""
-            )
-            .toLowerCase()
-            .includes(search)
+    const totalMoney =
+        roundMoney(
+            gcash + cash
         );
 
 
-    count.textContent =
-        transactions.length;
+    return {
+
+        gcash,
+
+        cash,
+
+        coins,
+
+        totalMoney
+
+    };
+
+}
 
 
-    table.innerHTML = "";
+/* =========================================================
+   RECEIVABLE
+========================================================= */
+
+function getReceivable() {
+
+    let total = 0;
 
 
-    if (filtered.length === 0) {
+    data.transactions.forEach(
+        transaction => {
 
-        table.innerHTML = `
-            <tr>
-                <td
-                    colspan="14"
-                    class="empty-database"
-                >
-                    No transactions found.
-                </td>
-            </tr>
-        `;
+            if (
+                transaction.amountStatus ===
+                "unpaid"
+            ) {
 
-        return;
+                total +=
+                    Number(
+                        transaction.amount
+                    ) || 0;
+
+            }
+
+        }
+    );
+
+
+    return roundMoney(total);
+
+}
+
+
+/* =========================================================
+   PROFIT
+========================================================= */
+
+function getProfit() {
+
+    let total = 0;
+
+
+    data.transactions.forEach(
+        transaction => {
+
+            if (
+                transaction.feeStatus ===
+                "paid"
+            ) {
+
+                total +=
+                    Number(
+                        transaction.fee
+                    ) || 0;
+
+            }
+
+        }
+    );
+
+
+    return roundMoney(total);
+
+}
+
+
+/* =========================================================
+   DASHBOARD
+========================================================= */
+
+function updateDashboard() {
+
+    const balances =
+        getBalances();
+
+
+    const totalMoney =
+        document.getElementById(
+            "totalMoney"
+        );
+
+
+    const gcashBalance =
+        document.getElementById(
+            "gcashBalance"
+        );
+
+
+    const cashBalance =
+        document.getElementById(
+            "cashBalance"
+        );
+
+
+    const coinsBalance =
+        document.getElementById(
+            "coinsBalance"
+        );
+
+
+    const profit =
+        document.getElementById(
+            "profit"
+        );
+
+
+    const receivable =
+        document.getElementById(
+            "receivable"
+        );
+
+
+    const transactionCount =
+        document.getElementById(
+            "transactionCount"
+        );
+
+
+    if (totalMoney) {
+
+        totalMoney.textContent =
+            peso(
+                balances.totalMoney
+            );
+
     }
 
 
-    filtered.forEach(transaction => {
+    if (gcashBalance) {
 
-        const row =
-            document.createElement("tr");
+        gcashBalance.textContent =
+            peso(
+                balances.gcash
+            );
 
-
-        row.innerHTML = `
-
-            <td>
-                ${formatDate(transaction.date)}
-            </td>
-
-            <td>
-                ${escapeHtml(transaction.customerName)}
-            </td>
-
-            <td>
-                ${peso(transaction.cashIn || 0)}
-            </td>
-
-            <td>
-                ${formatDate(transaction.cashInTime)}
-            </td>
-
-            <td>
-                ${formatDate(transaction.paymentTime)}
-            </td>
-
-            <td>
-                ${transaction.completedHours ?? 0}
-            </td>
-
-            <td>
-                ${peso(transaction.baseFee || 0)}
-            </td>
-
-            <td>
-                ${peso(transaction.dayPenalty || 0)}
-            </td>
-
-            <td>
-                ${transaction.chargeableHours ?? 0}
-            </td>
-
-            <td>
-                ${peso(transaction.hourlyPenalty || 0)}
-            </td>
-
-            <td>
-                ${peso(transaction.latePenalty || 0)}
-            </td>
-
-            <td>
-                ${peso(transaction.totalFee || 0)}
-            </td>
-
-            <td>
-                <strong>
-                    ${peso(transaction.totalToPay || 0)}
-                </strong>
-            </td>
-
-            <td>
-                <button
-                    type="button"
-                    class="delete-btn"
-                    onclick="deleteTransaction('${transaction.id}')"
-                >
-                    DELETE
-                </button>
-            </td>
-
-        `;
+    }
 
 
-        table.appendChild(row);
+    if (cashBalance) {
 
-    });
+        cashBalance.textContent =
+            peso(
+                balances.cash
+            );
+
+    }
+
+
+    if (coinsBalance) {
+
+        coinsBalance.textContent =
+            peso(
+                balances.coins
+            );
+
+    }
+
+
+    if (profit) {
+
+        profit.textContent =
+            peso(
+                getProfit()
+            );
+
+    }
+
+
+    if (receivable) {
+
+        receivable.textContent =
+            peso(
+                getReceivable()
+            );
+
+    }
+
+
+    if (transactionCount) {
+
+        transactionCount.textContent =
+            data.transactions.length;
+
+    }
+
+
+    updateHistorySummary();
+
+    renderHistory();
+
 }
 
+
+/* =========================================================
+   LIVE EDIT GCASH
+========================================================= */
+
+function editGcash() {
+
+    const input =
+        document.getElementById(
+            "gcashInput"
+        );
+
+
+    if (!input) {
+
+        return;
+
+    }
+
+
+    /*
+     * Empty input is allowed temporarily
+     * while typing.
+     */
+
+    if (
+        input.value === ""
+    ) {
+
+        return;
+
+    }
+
+
+    const value =
+        Number(
+            input.value
+        );
+
+
+    if (
+        !Number.isFinite(value) ||
+        value < 0
+    ) {
+
+        return;
+
+    }
+
+
+    data.gcash =
+        roundMoney(value);
+
+
+    saveData();
+
+
+    /*
+     * Update only dashboard.
+     *
+     * DO NOT reset the input.
+     */
+
+    updateDashboardOnly();
+
+}
+
+
+/* =========================================================
+   LIVE EDIT CASH
+========================================================= */
+
+function editCash() {
+
+    const input =
+        document.getElementById(
+            "cashInput"
+        );
+
+
+    if (!input) {
+
+        return;
+
+    }
+
+
+    if (
+        input.value === ""
+    ) {
+
+        return;
+
+    }
+
+
+    const value =
+        Number(
+            input.value
+        );
+
+
+    if (
+        !Number.isFinite(value) ||
+        value < 0
+    ) {
+
+        return;
+
+    }
+
+
+    data.cash =
+        roundMoney(value);
+
+
+    saveData();
+
+
+    updateDashboardOnly();
+
+}
+
+
+/* =========================================================
+   LIVE EDIT COINS
+========================================================= */
+
+function editCoins() {
+
+    const input =
+        document.getElementById(
+            "coinsInput"
+        );
+
+
+    if (!input) {
+
+        return;
+
+    }
+
+
+    if (
+        input.value === ""
+    ) {
+
+        return;
+
+    }
+
+
+    const value =
+        Number(
+            input.value
+        );
+
+
+    if (
+        !Number.isFinite(value) ||
+        value < 0
+    ) {
+
+        return;
+
+    }
+
+
+    data.coins =
+        roundMoney(value);
+
+
+    saveData();
+
+
+    updateDashboardOnly();
+
+}
+
+
+/* =========================================================
+   DASHBOARD ONLY
+========================================================= */
+
+function updateDashboardOnly() {
+
+    const balances =
+        getBalances();
+
+
+    const totalMoney =
+        document.getElementById(
+            "totalMoney"
+        );
+
+
+    const gcashBalance =
+        document.getElementById(
+            "gcashBalance"
+        );
+
+
+    const cashBalance =
+        document.getElementById(
+            "cashBalance"
+        );
+
+
+    const coinsBalance =
+        document.getElementById(
+            "coinsBalance"
+        );
+
+
+    if (totalMoney) {
+
+        totalMoney.textContent =
+            peso(
+                balances.totalMoney
+            );
+
+    }
+
+
+    if (gcashBalance) {
+
+        gcashBalance.textContent =
+            peso(
+                balances.gcash
+            );
+
+    }
+
+
+    if (cashBalance) {
+
+        cashBalance.textContent =
+            peso(
+                balances.cash
+            );
+
+    }
+
+
+    if (coinsBalance) {
+
+        coinsBalance.textContent =
+            peso(
+                balances.coins
+            );
+
+    }
+
+}
+
+
+/* =========================================================
+   PREVIEW
+========================================================= */
+
+function updatePreview() {
+
+    const amountInput =
+        document.getElementById(
+            "amount"
+        );
+
+
+    const feeInput =
+        document.getElementById(
+            "fee"
+        );
+
+
+    if (!amountInput || !feeInput) {
+
+        return;
+
+    }
+
+
+    const amount =
+        Number(
+            amountInput.value
+        ) || 0;
+
+
+    const fee =
+        Number(
+            feeInput.value
+        ) || 0;
+
+
+    const previewAmount =
+        document.getElementById(
+            "previewAmount"
+        );
+
+
+    const previewFee =
+        document.getElementById(
+            "previewFee"
+        );
+
+
+    const previewTotal =
+        document.getElementById(
+            "previewTotal"
+        );
+
+
+    if (previewAmount) {
+
+        previewAmount.textContent =
+            peso(amount);
+
+    }
+
+
+    if (previewFee) {
+
+        previewFee.textContent =
+            peso(fee);
+
+    }
+
+
+    if (previewTotal) {
+
+        previewTotal.textContent =
+            peso(
+                amount + fee
+            );
+
+    }
+
+}
+
+
+/* =========================================================
+   AUTO FEE
+========================================================= */
+
+function updateAutomaticFee() {
+
+    const amountInput =
+        document.getElementById(
+            "amount"
+        );
+
+
+    const feeInput =
+        document.getElementById(
+            "fee"
+        );
+
+
+    if (!amountInput || !feeInput) {
+
+        return;
+
+    }
+
+
+    const amount =
+        Number(
+            amountInput.value
+        ) || 0;
+
+
+    feeInput.value =
+        calculateFee(
+            amount
+        );
+
+
+    updatePreview();
+
+}
+
+
+/* =========================================================
+   RADIO
+========================================================= */
+
+function getRadioValue(name) {
+
+    const radio =
+        document.querySelector(
+            `input[name="${name}"]:checked`
+        );
+
+
+    return radio
+        ? radio.value
+        : "paid";
+
+}
+
+
+/* =========================================================
+   MESSAGE
+========================================================= */
+
+function showMessage(
+    text,
+    type
+) {
+
+    const element =
+        document.getElementById(
+            "formMessage"
+        );
+
+
+    if (!element) {
+
+        return;
+
+    }
+
+
+    element.textContent =
+        text;
+
+
+    element.className =
+        "message " +
+        (type || "success");
+
+
+    setTimeout(
+        () => {
+
+            element.textContent =
+                "";
+
+            element.className =
+                "message";
+
+        },
+        3500
+    );
+
+}
+
+
+/* =========================================================
+   APPLY TRANSACTION
+========================================================= */
+
+function applyTransaction(
+    transaction
+) {
+
+    const amount =
+        roundMoney(
+            transaction.amount
+        );
+
+
+    /* =====================================================
+       CASH IN
+
+       GCash decreases.
+
+       Paid:
+           Cash increases.
+
+       Unpaid:
+           Cash stays the same.
+    ====================================================== */
+
+    if (
+        transaction.type ===
+        "cashin"
+    ) {
+
+        data.gcash =
+            roundMoney(
+                data.gcash -
+                amount
+            );
+
+
+        if (
+            transaction.amountStatus ===
+            "paid"
+        ) {
+
+            data.cash =
+                roundMoney(
+                    data.cash +
+                    amount
+                );
+
+        }
+
+    }
+
+
+    /* =====================================================
+       CASH OUT
+
+       Cash decreases.
+
+       Paid:
+           GCash increases.
+
+       Unpaid:
+           GCash stays the same.
+    ====================================================== */
+
+    if (
+        transaction.type ===
+        "cashout"
+    ) {
+
+        data.cash =
+            roundMoney(
+                data.cash -
+                amount
+            );
+
+
+        if (
+            transaction.amountStatus ===
+            "paid"
+        ) {
+
+            data.gcash =
+                roundMoney(
+                    data.gcash +
+                    amount
+                );
+
+        }
+
+    }
+
+}
+
+
+/* =========================================================
+   REVERSE TRANSACTION
+========================================================= */
+
+function reverseTransaction(
+    transaction
+) {
+
+    const amount =
+        roundMoney(
+            transaction.amount
+        );
+
+
+    /* Reverse Cash In */
+
+    if (
+        transaction.type ===
+        "cashin"
+    ) {
+
+        data.gcash =
+            roundMoney(
+                data.gcash +
+                amount
+            );
+
+
+        if (
+            transaction.amountStatus ===
+            "paid"
+        ) {
+
+            data.cash =
+                roundMoney(
+                    data.cash -
+                    amount
+                );
+
+        }
+
+    }
+
+
+    /* Reverse Cash Out */
+
+    if (
+        transaction.type ===
+        "cashout"
+    ) {
+
+        data.cash =
+            roundMoney(
+                data.cash +
+                amount
+            );
+
+
+        if (
+            transaction.amountStatus ===
+            "paid"
+        ) {
+
+            data.gcash =
+                roundMoney(
+                    data.gcash -
+                    amount
+                );
+
+        }
+
+    }
+
+}
+
+
+/* =========================================================
+   ADD TRANSACTION
+========================================================= */
+
+function addTransaction() {
+
+    const customerInput =
+        document.getElementById(
+            "customerName"
+        );
+
+
+    const typeInput =
+        document.getElementById(
+            "transactionType"
+        );
+
+
+    const amountInput =
+        document.getElementById(
+            "amount"
+        );
+
+
+    const feeInput =
+        document.getElementById(
+            "fee"
+        );
+
+
+    const customer =
+        customerInput.value.trim();
+
+
+    const type =
+        typeInput.value;
+
+
+    const amount =
+        Number(
+            amountInput.value
+        );
+
+
+    const fee =
+        Number(
+            feeInput.value
+        );
+
+
+    const amountStatus =
+        getRadioValue(
+            "amountStatus"
+        );
+
+
+    const feeStatus =
+        getRadioValue(
+            "feeStatus"
+        );
+
+
+    /* =====================================================
+       VALIDATION
+    ====================================================== */
+
+    if (!customer) {
+
+        showMessage(
+            "Please enter the customer name.",
+            "error"
+        );
+
+        return;
+
+    }
+
+
+    if (
+        !Number.isFinite(amount) ||
+        amount <= 0
+    ) {
+
+        showMessage(
+            "Please enter a valid amount.",
+            "error"
+        );
+
+        return;
+
+    }
+
+
+    if (
+        !Number.isFinite(fee) ||
+        fee < 0
+    ) {
+
+        showMessage(
+            "Please enter a valid fee.",
+            "error"
+        );
+
+        return;
+
+    }
+
+
+    /* =====================================================
+       CHECK AVAILABLE BALANCE
+    ====================================================== */
+
+    if (
+        type === "cashin" &&
+        data.gcash < amount
+    ) {
+
+        showMessage(
+            "Not enough GCash. Available: " +
+            peso(data.gcash),
+            "error"
+        );
+
+        return;
+
+    }
+
+
+    if (
+        type === "cashout" &&
+        data.cash < amount
+    ) {
+
+        showMessage(
+            "Not enough Cash. Available: " +
+            peso(data.cash),
+            "error"
+        );
+
+        return;
+
+    }
+
+
+    /* =====================================================
+       CREATE
+    ====================================================== */
+
+    const transaction = {
+
+        id:
+            Date.now() +
+            Math.random(),
+
+        date:
+            new Date().toLocaleString(
+                "en-PH"
+            ),
+
+        customer,
+
+        type,
+
+        amount:
+            roundMoney(
+                amount
+            ),
+
+        fee:
+            roundMoney(
+                fee
+            ),
+
+        amountStatus,
+
+        feeStatus
+
+    };
+
+
+    /* =====================================================
+       MODIFY CURRENT BALANCES
+    ====================================================== */
+
+    applyTransaction(
+        transaction
+    );
+
+
+    /* =====================================================
+       SAVE TRANSACTION
+    ====================================================== */
+
+    data.transactions.unshift(
+        transaction
+    );
+
+
+    saveData();
+
+
+    updateDashboard();
+
+
+    /* =====================================================
+       CLEAR FORM
+    ====================================================== */
+
+    customerInput.value =
+        "";
+
+
+    amountInput.value =
+        "";
+
+
+    feeInput.value =
+        "";
+
+
+    document.querySelector(
+        'input[name="amountStatus"][value="paid"]'
+    ).checked = true;
+
+
+    document.querySelector(
+        'input[name="feeStatus"][value="paid"]'
+    ).checked = true;
+
+
+    updatePreview();
+
+
+    showMessage(
+        "✓ Transaction added and balance updated.",
+        "success"
+    );
+
+}
+
+
+/* =========================================================
+   CHANGE PAYMENT STATUS
+========================================================= */
+
+function changeStatus(
+    id,
+    field,
+    newStatus
+) {
+
+    const transaction =
+        data.transactions.find(
+            item =>
+                String(item.id) ===
+                String(id)
+        );
+
+
+    if (!transaction) {
+
+        return;
+
+    }
+
+
+    /* =====================================================
+       FEE STATUS
+       Does NOT affect balance.
+    ====================================================== */
+
+    if (
+        field ===
+        "feeStatus"
+    ) {
+
+        transaction.feeStatus =
+            newStatus;
+
+
+        saveData();
+
+        updateDashboard();
+
+        return;
+
+    }
+
+
+    /* =====================================================
+       AMOUNT STATUS
+       DOES affect balance.
+    ====================================================== */
+
+    if (
+        field ===
+        "amountStatus"
+    ) {
+
+        /*
+         * Remove old effect.
+         */
+
+        reverseTransaction(
+            transaction
+        );
+
+
+        /*
+         * Change status.
+         */
+
+        transaction.amountStatus =
+            newStatus;
+
+
+        /*
+         * Apply new effect.
+         */
+
+        applyTransaction(
+            transaction
+        );
+
+
+        saveData();
+
+        updateDashboard();
+
+    }
+
+}
+
+
+/* =========================================================
+   EDIT FEE
+========================================================= */
+
+function editFee(
+    id,
+    value
+) {
+
+    const transaction =
+        data.transactions.find(
+            item =>
+                String(item.id) ===
+                String(id)
+        );
+
+
+    if (!transaction) {
+
+        return;
+
+    }
+
+
+    const fee =
+        Number(value);
+
+
+    if (
+        !Number.isFinite(fee) ||
+        fee < 0
+    ) {
+
+        alert(
+            "Invalid fee."
+        );
+
+        renderHistory();
+
+        return;
+
+    }
+
+
+    transaction.fee =
+        roundMoney(fee);
+
+
+    saveData();
+
+    updateDashboard();
+
+}
+
+
+/* =========================================================
+   DELETE
+========================================================= */
 
 function deleteTransaction(id) {
 
-    if (!confirm(
-        "Are you sure you want to delete this transaction?"
-    )) {
-        return;
-    }
-
-
-    let transactions =
-        getTransactions();
-
-
-    transactions =
-        transactions.filter(
-            transaction =>
-                transaction.id !== id
+    const index =
+        data.transactions.findIndex(
+            item =>
+                String(item.id) ===
+                String(id)
         );
 
 
-    saveTransactions(transactions);
+    if (index === -1) {
 
-    displayRecords();
+        return;
+
+    }
+
+
+    const transaction =
+        data.transactions[index];
+
+
+    const confirmed =
+        confirm(
+            "Delete this transaction?\n\n" +
+            transaction.customer +
+            "\n" +
+            (
+                transaction.type === "cashin"
+                    ? "Cash In"
+                    : "Cash Out"
+            ) +
+            "\n" +
+            peso(
+                transaction.amount
+            )
+        );
+
+
+    if (!confirmed) {
+
+        return;
+
+    }
+
+
+    /*
+     * Remove its effect from balances.
+     */
+
+    reverseTransaction(
+        transaction
+    );
+
+
+    /*
+     * Remove history.
+     */
+
+    data.transactions.splice(
+        index,
+        1
+    );
+
+
+    saveData();
+
+    updateDashboard();
+
 }
 
 
-function deleteAllRecords() {
+/* =========================================================
+   STATUS SELECT
+========================================================= */
 
-    const transactions =
-        getTransactions();
+function createStatusSelect(
+    value,
+    callback
+) {
 
-
-    if (transactions.length === 0) {
-
-        alert("There are no transactions to delete.");
-
-        return;
-    }
-
-
-    if (!confirm(
-        "WARNING: This will delete ALL transactions from this browser. Continue?"
-    )) {
-        return;
-    }
+    const select =
+        document.createElement(
+            "select"
+        );
 
 
-    localStorage.removeItem(DATABASE_KEY);
-
-    displayRecords();
-}
-
-
-function formatDate(value) {
-
-    if (!value) {
-        return "-";
-    }
+    select.className =
+        "status-select " +
+        (
+            value === "paid"
+                ? "paid"
+                : "unpaid"
+        );
 
 
-    const date =
-        new Date(value);
+    select.innerHTML = `
+
+        <option value="paid">
+            ✓ Paid
+        </option>
+
+        <option value="unpaid">
+            ✕ Not Paid
+        </option>
+
+    `;
 
 
-    if (isNaN(date.getTime())) {
-        return "-";
-    }
+    select.value =
+        value;
 
 
-    return date.toLocaleString(
-        "en-PH",
-        {
-            year: "numeric",
-            month: "short",
-            day: "numeric",
-            hour: "numeric",
-            minute: "2-digit",
-            hour12: true
+    select.addEventListener(
+        "change",
+        () => {
+
+            select.className =
+                "status-select " +
+                (
+                    select.value === "paid"
+                        ? "paid"
+                        : "unpaid"
+                );
+
+
+            callback(
+                select.value
+            );
+
         }
     );
+
+
+    return select;
+
 }
 
 
-function escapeHtml(text) {
+/* =========================================================
+   HISTORY
+========================================================= */
 
-    const div =
-        document.createElement("div");
+function renderHistory() {
 
-    div.textContent =
-        text == null ? "" : String(text);
-
-    return div.innerHTML;
-}
-
-
-function showError(message) {
-
-    const error =
-        getElement("errorMessage");
-
-    error.textContent = message;
-
-    error.style.display = "block";
-}
+    const body =
+        document.getElementById(
+            "historyBody"
+        );
 
 
-function clearMessage() {
-
-    const error =
-        getElement("errorMessage");
-
-    error.textContent = "";
-
-    error.style.display = "none";
-}
+    const empty =
+        document.getElementById(
+            "emptyHistory"
+        );
 
 
-function clearCalculator() {
+    if (!body) {
 
-    [
-        "customerName",
-        "cashIn",
-        "cashInTime",
-        "paymentTime"
-    ].forEach(id => {
+        return;
 
-        const element =
-            getElement(id);
+    }
 
-        if (element) {
-            element.value = "";
+
+    body.innerHTML =
+        "";
+
+
+    if (
+        data.transactions.length === 0
+    ) {
+
+        if (empty) {
+
+            empty.style.display =
+                "block";
+
         }
 
-    });
+        return;
+
+    }
 
 
-    getElement("settled").checked = false;
+    if (empty) {
 
-    clearMessage();
+        empty.style.display =
+            "none";
+
+    }
 
 
-    getElement("result").style.display =
-        "none";
+    data.transactions.forEach(
+        transaction => {
+
+            const row =
+                document.createElement(
+                    "tr"
+                );
+
+
+            /* DATE */
+
+            const date =
+                document.createElement(
+                    "td"
+                );
+
+            date.textContent =
+                transaction.date;
+
+
+            /* CUSTOMER */
+
+            const customer =
+                document.createElement(
+                    "td"
+                );
+
+            customer.textContent =
+                transaction.customer;
+
+
+            /* TYPE */
+
+            const type =
+                document.createElement(
+                    "td"
+                );
+
+            type.textContent =
+                transaction.type ===
+                "cashin"
+                    ? "Cash In"
+                    : "Cash Out";
+
+
+            type.className =
+                transaction.type ===
+                "cashin"
+                    ? "type-cashin"
+                    : "type-cashout";
+
+
+            /* AMOUNT */
+
+            const amount =
+                document.createElement(
+                    "td"
+                );
+
+            amount.textContent =
+                peso(
+                    transaction.amount
+                );
+
+
+            /* AMOUNT STATUS */
+
+            const amountStatus =
+                document.createElement(
+                    "td"
+                );
+
+
+            amountStatus.appendChild(
+
+                createStatusSelect(
+
+                    transaction.amountStatus,
+
+                    status => {
+
+                        changeStatus(
+
+                            transaction.id,
+
+                            "amountStatus",
+
+                            status
+
+                        );
+
+                    }
+
+                )
+
+            );
+
+
+            /* FEE */
+
+            const fee =
+                document.createElement(
+                    "td"
+                );
+
+
+            const feeInput =
+                document.createElement(
+                    "input"
+                );
+
+
+            feeInput.type =
+                "number";
+
+
+            feeInput.min =
+                "0";
+
+
+            feeInput.step =
+                "0.01";
+
+
+            feeInput.value =
+                transaction.fee;
+
+
+            feeInput.className =
+                "history-fee-input";
+
+
+            feeInput.addEventListener(
+                "change",
+                () => {
+
+                    editFee(
+
+                        transaction.id,
+
+                        feeInput.value
+
+                    );
+
+                }
+            );
+
+
+            fee.appendChild(
+                feeInput
+            );
+
+
+            /* FEE STATUS */
+
+            const feeStatus =
+                document.createElement(
+                    "td"
+                );
+
+
+            feeStatus.appendChild(
+
+                createStatusSelect(
+
+                    transaction.feeStatus,
+
+                    status => {
+
+                        changeStatus(
+
+                            transaction.id,
+
+                            "feeStatus",
+
+                            status
+
+                        );
+
+                    }
+
+                )
+
+            );
+
+
+            /* ACTION */
+
+            const action =
+                document.createElement(
+                    "td"
+                );
+
+
+            const deleteButton =
+                document.createElement(
+                    "button"
+                );
+
+
+            deleteButton.type =
+                "button";
+
+
+            deleteButton.className =
+                "delete-btn";
+
+
+            deleteButton.textContent =
+                "Delete";
+
+
+            deleteButton.addEventListener(
+                "click",
+                () => {
+
+                    deleteTransaction(
+                        transaction.id
+                    );
+
+                }
+            );
+
+
+            action.appendChild(
+                deleteButton
+            );
+
+
+            /* ADD */
+
+            row.appendChild(date);
+
+            row.appendChild(customer);
+
+            row.appendChild(type);
+
+            row.appendChild(amount);
+
+            row.appendChild(amountStatus);
+
+            row.appendChild(fee);
+
+            row.appendChild(feeStatus);
+
+            row.appendChild(action);
+
+
+            body.appendChild(row);
+
+        }
+    );
+
 }
 
+
+/* =========================================================
+   HISTORY SUMMARY
+========================================================= */
+
+function updateHistorySummary() {
+
+    let paidAmount = 0;
+
+    let unpaidAmount = 0;
+
+    let paidFee = 0;
+
+    let unpaidFee = 0;
+
+
+    data.transactions.forEach(
+        transaction => {
+
+            const amount =
+                Number(
+                    transaction.amount
+                ) || 0;
+
+
+            const fee =
+                Number(
+                    transaction.fee
+                ) || 0;
+
+
+            if (
+                transaction.amountStatus ===
+                "paid"
+            ) {
+
+                paidAmount +=
+                    amount;
+
+            } else {
+
+                unpaidAmount +=
+                    amount;
+
+            }
+
+
+            if (
+                transaction.feeStatus ===
+                "paid"
+            ) {
+
+                paidFee +=
+                    fee;
+
+            } else {
+
+                unpaidFee +=
+                    fee;
+
+            }
+
+        }
+    );
+
+
+    document.getElementById(
+        "paidAmountTotal"
+    ).textContent =
+        peso(paidAmount);
+
+
+    document.getElementById(
+        "unpaidAmountTotal"
+    ).textContent =
+        peso(unpaidAmount);
+
+
+    document.getElementById(
+        "paidFeeTotal"
+    ).textContent =
+        peso(paidFee);
+
+
+    document.getElementById(
+        "unpaidFeeTotal"
+    ).textContent =
+        peso(unpaidFee);
+
+}
+
+
+/* =========================================================
+   CLEAR HISTORY
+========================================================= */
+
+function clearHistory() {
+
+    if (
+        data.transactions.length === 0
+    ) {
+
+        alert(
+            "No transactions to clear."
+        );
+
+        return;
+
+    }
+
+
+    const confirmed =
+        confirm(
+            "Clear all transaction history?\n\n" +
+            "Your current balances will stay exactly as they are."
+        );
+
+
+    if (!confirmed) {
+
+        return;
+
+    }
+
+
+    /*
+     * IMPORTANT:
+     *
+     * Clearing history does NOT change
+     * the current GCash/Cash/Coins.
+     */
+
+    data.transactions =
+        [];
+
+
+    saveData();
+
+    updateDashboard();
+
+}
+
+
+/* =========================================================
+   RESET EVERYTHING
+========================================================= */
+
+function resetEverything() {
+
+    const confirmed =
+        confirm(
+            "Reset everything?\n\n" +
+            "GCash will become ₱12,000\n" +
+            "Cash will become ₱12,000\n" +
+            "Coins will become ₱500\n" +
+            "All transactions will be deleted."
+        );
+
+
+    if (!confirmed) {
+
+        return;
+
+    }
+
+
+    data =
+        JSON.parse(
+            JSON.stringify(
+                DEFAULT_DATA
+            )
+        );
+
+
+    saveData();
+
+
+    /*
+     * Put reset values into inputs.
+     */
+
+    document.getElementById(
+        "gcashInput"
+    ).value =
+        data.gcash;
+
+
+    document.getElementById(
+        "cashInput"
+    ).value =
+        data.cash;
+
+
+    document.getElementById(
+        "coinsInput"
+    ).value =
+        data.coins;
+
+
+    updateDashboard();
+
+    updatePreview();
+
+}
+
+
+/* =========================================================
+   START APP
+========================================================= */
 
 document.addEventListener(
     "DOMContentLoaded",
-    function () {
-        displayRecords();
+    () => {
+
+        /* =================================================
+           BALANCE INPUTS
+        ================================================== */
+
+        const gcashInput =
+            document.getElementById(
+                "gcashInput"
+            );
+
+
+        const cashInput =
+            document.getElementById(
+                "cashInput"
+            );
+
+
+        const coinsInput =
+            document.getElementById(
+                "coinsInput"
+            );
+
+
+        /*
+         * Set actual saved values.
+         */
+
+        gcashInput.value =
+            data.gcash;
+
+
+        cashInput.value =
+            data.cash;
+
+
+        coinsInput.value =
+            data.coins;
+
+
+        /*
+         * LIVE EDIT
+         */
+
+        gcashInput.addEventListener(
+            "input",
+            editGcash
+        );
+
+
+        cashInput.addEventListener(
+            "input",
+            editCash
+        );
+
+
+        coinsInput.addEventListener(
+            "input",
+            editCoins
+        );
+
+
+        /* =================================================
+           TRANSACTION AMOUNT
+        ================================================== */
+
+        const amountInput =
+            document.getElementById(
+                "amount"
+            );
+
+
+        amountInput.addEventListener(
+            "input",
+            updateAutomaticFee
+        );
+
+
+        /* =================================================
+           FEE
+        ================================================== */
+
+        const feeInput =
+            document.getElementById(
+                "fee"
+            );
+
+
+        feeInput.addEventListener(
+            "input",
+            updatePreview
+        );
+
+
+        /* =================================================
+           ADD TRANSACTION
+        ================================================== */
+
+        document.getElementById(
+            "addTransactionBtn"
+        ).addEventListener(
+            "click",
+            addTransaction
+        );
+
+
+        /* =================================================
+           CLEAR HISTORY
+        ================================================== */
+
+        document.getElementById(
+            "clearHistoryBtn"
+        ).addEventListener(
+            "click",
+            clearHistory
+        );
+
+
+        /* =================================================
+           RESET
+        ================================================== */
+
+        document.getElementById(
+            "resetBtn"
+        ).addEventListener(
+            "click",
+            resetEverything
+        );
+
+
+        /* =================================================
+           INITIAL DISPLAY
+        ================================================== */
+
+        updatePreview();
+
+        updateDashboard();
+
     }
 );
